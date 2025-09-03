@@ -110,7 +110,14 @@ function applyFrame(f) {
 
 function advance() {
   if (!frames.length) return;
-  applyFrame(frames[frame]);
+  const f = frames[frame];
+  if (!f.body) {
+    console.warn('Frame', frame, 'sem body; pulando');
+    frame = (frame + 1) % frames.length;
+    return;
+  }
+  console.log('Applying frame', frame);
+  applyFrame(f);
   frame = (frame + 1) % frames.length;
 }
 
@@ -196,11 +203,15 @@ function parsePose(text) {
   // Fallback: JSON-L (um frame por linha)
   try {
     return text
-      .replace(/'/g, '"')
       .split(/\n+/)
       .map(l => l.trim())
       .filter(Boolean)
-      .map(JSON.parse);
+      .map(l => {
+        const cleaned = l
+          .replace(/^\d+\s*:\s*/, '')
+          .replace(/'/g, '"');
+        return JSON.parse(cleaned);
+      });
   } catch (e) {
     console.error('parsePose(): JSON-L parse fail', e);
     return [];
@@ -227,6 +238,10 @@ function loadPoseFromText(text) {
   normalizeFrames(frames);
   frame = 0;
   console.log('Frames:', frames.length);
+  if (frames.length) {
+    const sample = frames[0].body[BODY.indexOf('RWrist')];
+    console.log('Sample RWrist from frame 0:', sample);
+  }
 }
 
 function setupSkeleton(sk) {
