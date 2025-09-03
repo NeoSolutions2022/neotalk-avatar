@@ -184,13 +184,27 @@ function parsePose(text) {
     if (current) frames.push(current);
     return frames;
   }
+  // Formato antigo: dicionários Python concatenados "}{" sem vírgulas
+  if (text.includes('}{')) {
+    try {
+      const json = '[' + text.replace(/}\s*{/g, '},{') + ']';
+      return JSON.parse(json.replace(/'/g, '"'));
+    } catch (e) {
+      console.error('parsePose(): concat parse fail', e);
+    }
+  }
   // Fallback: JSON-L (um frame por linha)
-  return text
-    .replace(/'/g, '"')
-    .split(/\n+/)
-    .map(l => l.trim())
-    .filter(Boolean)
-    .map(JSON.parse);
+  try {
+    return text
+      .replace(/'/g, '"')
+      .split(/\n+/)
+      .map(l => l.trim())
+      .filter(Boolean)
+      .map(JSON.parse);
+  } catch (e) {
+    console.error('parsePose(): JSON-L parse fail', e);
+    return [];
+  }
 }
 
 function normalizeFrames(frames) {

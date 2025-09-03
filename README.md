@@ -16,6 +16,8 @@ Left Wrist: 380.2 250.1 0.96
 
 Somente os pontos do corpo utilizados pelos braços são aplicados no esqueleto do avatar nesta PoC.
 
+Também é suportado o formato legado onde cada linha do arquivo é um dicionário Python com os grupos `body`, `left_hand`, `right_hand` e `face`.
+
 ## Executando com Docker
 
 ```bash
