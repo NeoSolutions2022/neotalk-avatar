@@ -38,6 +38,23 @@ stepBtn.onclick = () => {
   advance();
 };
 
+// Ordem completa dos keypoints conforme gerador de .pose
+const BODY_KEYPOINTS_ORDER = [
+  'Nose','Neck','RShoulder','RElbow','RWrist','LShoulder','LElbow','LWrist','MidHip','RHip',
+  'RKnee','RAnkle','LHip','LKnee','LAnkle','REye','LEye','REar','LEar','LBigToe',
+  'LSmallToe','LHeel','RBigToe','RSmallToe','RHeel'
+];
+const HAND_KEYPOINTS_ORDER = [
+  'Wrist',
+  'Thumb1','Thumb2','Thumb3','Thumb4',
+  'Index1','Index2','Index3','Index4',
+  'Middle1','Middle2','Middle3','Middle4',
+  'Ring1','Ring2','Ring3','Ring4',
+  'Pinky1','Pinky2','Pinky3','Pinky4'
+];
+const FACE_KEYPOINTS_ORDER = Array.from({ length: 70 }, (_, i) => `Face_${i}`);
+
+// Subconjunto utilizado para animar o rig
 const BODY = ['Nose','Neck','RShoulder','RElbow','RWrist','LShoulder','LElbow','LWrist','MidHip','RHip','RKnee','RAnkle','LHip','LKnee','LAnkle'];
 const child = {Neck:'Nose', RShoulder:'RElbow', RElbow:'RWrist', LShoulder:'LElbow', LElbow:'LWrist', RHip:'RKnee', RKnee:'RAnkle', LHip:'LKnee', LKnee:'LAnkle'};
 const MAP = {
@@ -103,19 +120,77 @@ function loop(t) {
     last = t;
     advance();
   }
+  if (skeleton) skeleton.update();
   renderer.render(scene, camera);
 }
 loop(0);
 
 function parsePose(text) {
-  text = text.replace(/np\.float64\(([^)]+)\)/g, '$1').replace(/'/g, '"');
-  const arr = [];
-  for (const line of text.split(/\n+/)) {
-    const l = line.trim();
-    if (!l || l.startsWith('#')) continue;
-    arr.push(JSON.parse(l));
+  // Remove wrappers tipo np.float64()
+  text = text.replace(/np\.float(?:64|32)\(([^)]+)\)/g, '$1');
+  // Formato novo com seções "# Frame: N - Body keypoints"
+  if (text.includes('# Frame')) {
+    const lines = text.split(/\r?\n/);
+    const frames = [];
+    let current = null;
+    let section = null;
+    let currentIdx = -1;
+    for (const line of lines) {
+      const l = line.trim();
+      if (!l) continue;
+      const header = l.match(/^# Frame:\s*(\d+)\s*-\s*(.+) keypoints/i);
+      if (header) {
+        const idx = +header[1];
+        const part = header[2].toLowerCase();
+        if (idx !== currentIdx) {
+          if (current) frames.push(current);
+          current = {
+            body: Array(BODY_KEYPOINTS_ORDER.length).fill(null),
+            left_hand: Array(HAND_KEYPOINTS_ORDER.length).fill(null),
+            right_hand: Array(HAND_KEYPOINTS_ORDER.length).fill(null),
+            face: Array(FACE_KEYPOINTS_ORDER.length).fill(null),
+          };
+          currentIdx = idx;
+        }
+        if (part.startsWith('body')) section = 'body';
+        else if (part.startsWith('left hand')) section = 'left_hand';
+        else if (part.startsWith('right hand')) section = 'right_hand';
+        else if (part.startsWith('face')) section = 'face';
+        else section = null;
+        continue;
+      }
+      if (!current || !section) continue;
+      const m = l.match(/^([^:]+):\s*([\d.eE+-]+)\s+([\d.eE+-]+)\s+([\d.eE+-]+)/);
+      if (!m) continue;
+      let name = m[1].trim();
+      const x = parseFloat(m[2]);
+      const y = parseFloat(m[3]);
+      const c = parseFloat(m[4]);
+      let order;
+      if (section === 'body') {
+        order = BODY_KEYPOINTS_ORDER;
+      } else if (section === 'left_hand') {
+        order = HAND_KEYPOINTS_ORDER;
+        name = name.replace(/^Left\s+/, '');
+      } else if (section === 'right_hand') {
+        order = HAND_KEYPOINTS_ORDER;
+        name = name.replace(/^Right\s+/, '');
+      } else {
+        order = FACE_KEYPOINTS_ORDER;
+      }
+      const idx = order.indexOf(name);
+      if (idx !== -1) current[section][idx] = [x, y, c];
+    }
+    if (current) frames.push(current);
+    return frames;
   }
-  return arr;
+  // Fallback: JSON-L (um frame por linha)
+  return text
+    .replace(/'/g, '"')
+    .split(/\n+/)
+    .map(l => l.trim())
+    .filter(Boolean)
+    .map(JSON.parse);
 }
 
 function normalizeFrames(frames) {
