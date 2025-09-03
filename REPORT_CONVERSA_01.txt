@@ -1,0 +1,77 @@
+# NeoTalk – Avatar Pose Debug Log (até 30 mai 2025)
+
+## Contexto geral
+
+* **Objetivo**: PoC em Three.js que recebe arquivo `.pose` (frames de key‑points corpo/mãos/face) e aplica em avatar FBX rigado (Character‑Creator standard skeleton) no navegador.
+* **Fontes**: `avatar.fbx`, `poses.json` (ou `.pose` convertido). 25 key‑points corpo no momento.
+* **Ambiente**: THREE r161 + módulos (FBXLoader, OrbitControls).
+
+---
+
+## Linha do tempo de depuração
+
+| Etapa | Problema / Ação                                               | Status                                                                    |
+| ----- | ------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| 1     | FBX carregava mas não aparecia                                | escalonar (`.01→.02`) + centralizar + grid/axes OK                        |
+| 2     | Página travava                                                | recursão em `loop()` – removido `loop(0)` interno ✔︎                      |
+| 3     | `advance()` rodava, mas nada mexia                            | mapeamento usava ossos *Twist* → MAP ajustado p/ ossos core ✔︎            |
+| 4     | Quaternions quase nulos                                       | `restDir` não salvo; rotação comparava eixo Y‑up global com alvo local ✔︎ |
+| 5     | Implementado `restDir` + `premultiply(q)`                     | braços ainda imóveis (vetores muito curtos) ✔︎                            |
+| 6     | Escala de vetor aumentada (`S=4..6`)                          | ainda mínimo visual                                                       |
+| 7     | Identificado: direção mundial vs. direção de osso raiz errada | precisa debug setas/teste manual (pendente)                               |
+
+---
+
+## Código atual (essência)
+
+* `toVec3`: converte pt 2‑D normalizado → espacio world, escala `S`.
+* `rotBone`: usa `bone.userData.restDir` e `premultiply(q)`.
+* `restDir` salvo depois de `mesh.updateMatrixWorld(true)`.
+* `MAP`: usa ossos principais (`Upperarm`, `Forearm`, `Hand`, `Thigh`, `Calf`, `Foot`, `NeckTwist01`).
+* `loop`: render + RAF, sem recursão.
+
+---
+
+## Pontos ainda pendentes
+
+1. **Confirmar que `restDir` foi salvo** depois do updateMatrixWorld.
+2. **Verificar vetores**: usar ArrowHelper (`dbg`) entre `RElbow` e `RWrist` num frame para ver magnitude/ direção.
+3. **Testar rotação manual** com `rotateZ` nos ossos do MAP – garantir que deformam a malha.
+4. **Ajustar escala `S`** ou usar z‑depth real se disponível.
+
+---
+
+## Protocolo de debug rápido
+
+```js
+// 1️⃣ conferir existência pontos
+console.log(kp.body?.[BODY.indexOf('RElbow')]);
+
+// 2️⃣ seta debug (uma vez fora)
+const dbg = new THREE.ArrowHelper(new THREE.Vector3(), new THREE.Vector3(),1,0xff00ff);
+scene.add(dbg);
+// dentro de advance()
+if(kpName==='RElbow'){
+  dbg.position.copy(toVec3(pA));
+  dbg.setDirection(new THREE.Vector3().subVectors(toVec3(pB),toVec3(pA)).normalize());
+}
+
+// 3️⃣ teste manual
+skeleton.getBoneByName('CC_Base_R_Upperarm').rotateZ(Math.PI/4);
+```
+
+---
+
+## Próximos passos propostos
+
+* Se ponteiros corretos → aplicar `slerp(q,α)` (α≈0.3) para suavizar.
+* Integrar mãos (21 KP) com IK (three‑ik).
+* Adicionar blend‑shapes faciais (Kalidokit ou MediaPipe FaceMesh).
+* Fazer streaming WebSocket em tempo real em vez de arquivo.
+
+---
+
+## Observações finais
+
+* Todas as variáveis globais úteis (`skeleton`,`poses`,`scene`,etc.) exportadas via `window.*` para facilitar DevTools.
+* Helpers (Grid, SkeletonHelper, Box3Helper) podem ser ocultados (`visible=false`) após validação.
