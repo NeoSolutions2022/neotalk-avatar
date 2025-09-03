@@ -1,98 +1,210 @@
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.161/build/three.module.js';
-import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.161/examples/jsm/controls/OrbitControls.js';
-import { FBXLoader } from 'https://cdn.jsdelivr.net/npm/three@0.161/examples/jsm/loaders/FBXLoader.js';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/controls/OrbitControls.js';
+import { FBXLoader } from 'three/examples/loaders/FBXLoader.js';
 
-let scene, camera, renderer;
-let skeleton, bonesByName = {};
-let frames = [];
-let frameIndex = 0;
+const scene = new THREE.Scene();
+scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+const grid = new THREE.GridHelper(4, 40, 0x444444, 0x222222);
+grid.rotation.x = -Math.PI / 2;
+scene.add(grid);
 
-init();
-loadPose().then(data => frames = data);
-
-function init() {
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xdddddd);
-
-  camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-  camera.position.set(0, 1.5, 3);
-
-  renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  document.body.appendChild(renderer.domElement);
-
-  new OrbitControls(camera, renderer.domElement);
-
-  const light = new THREE.HemisphereLight(0xffffff, 0x444444);
-  light.position.set(0, 1, 0);
-  scene.add(light);
-
-  const loader = new FBXLoader();
-  loader.load('avatar.fbx', fbx => {
-    fbx.scale.setScalar(0.01);
-    scene.add(fbx);
-    fbx.traverse(obj => {
-      if (obj.isSkinnedMesh) {
-        skeleton = obj.skeleton;
-        skeleton.bones.forEach(b => bonesByName[b.name] = b);
-      }
-    });
-  });
-
-  window.addEventListener('resize', onWindowResize);
-  animate();
-}
-
-async function loadPose() {
-  const text = await fetch('frame.pose').then(r => r.text());
-  const lines = text.trim().split(/\n+/).filter(Boolean).slice(0, 129);
-  return lines.map(line => {
-    line = line.replace(/np\.float\d+\(([^)]+)\)/g, '$1').replace(/'/g, '"');
-    return JSON.parse(line);
-  });
-}
-
-const BODY_KEYPOINTS_ORDER = ['Nose', 'Neck', 'RShoulder', 'RElbow', 'RWrist', 'LShoulder', 'LElbow', 'LWrist', 'MidHip', 'RHip', 'RKnee', 'RAnkle', 'LHip', 'LKnee', 'LAnkle', 'REye', 'LEye', 'REar', 'LEar', 'LBigToe', 'LSmallToe', 'LHeel', 'RBigToe', 'RSmallToe', 'RHeel'];
-const HAND_KEYPOINTS_ORDER = ['Wrist', 'Thumb1', 'Thumb2', 'Thumb3', 'Thumb4', 'Index1', 'Index2', 'Index3', 'Index4', 'Middle1', 'Middle2', 'Middle3', 'Middle4', 'Ring1', 'Ring2', 'Ring3', 'Ring4', 'Pinky1', 'Pinky2', 'Pinky3', 'Pinky4'];
-const FACE_KEYPOINTS_ORDER = Array.from({ length: 70 }, (_, i) => `Face_${i}`);
-
-function applyPose(frame) {
-  if (!skeleton) return;
-  const all = [...frame.body, ...frame.left_hand, ...frame.right_hand, ...frame.face];
-  const xs = all.map(p => p[0]);
-  const ys = all.map(p => p[1]);
-  const cx = (Math.max(...xs) + Math.min(...xs)) / 2;
-  const cy = (Math.max(...ys) + Math.min(...ys)) / 2;
-  const scale = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
-  const mapPart = (points, order, prefix = '') => {
-    points.forEach((p, i) => {
-      const name = prefix + order[i];
-      const bone = bonesByName[name];
-      if (bone) {
-        const x = (p[0] - cx) / scale;
-        const y = -(p[1] - cy) / scale;
-        bone.position.x = x;
-        bone.position.y = y;
-      }
-    });
-  };
-  mapPart(frame.body, BODY_KEYPOINTS_ORDER);
-  mapPart(frame.left_hand, HAND_KEYPOINTS_ORDER, 'Left ');
-  mapPart(frame.right_hand, HAND_KEYPOINTS_ORDER, 'Right ');
-  mapPart(frame.face, FACE_KEYPOINTS_ORDER);
-}
-
-function animate() {
-  requestAnimationFrame(animate);
-  if (frames.length) {
-    applyPose(frames[frameIndex]);
-    frameIndex = (frameIndex + 1) % frames.length;
-  }
-  renderer.render(scene, camera);
-}
-
-function onWindowResize() {
+const camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 1.7, 3);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+const controls = new OrbitControls(camera, renderer.domElement);
+window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+let mesh = null;
+let skeleton = null;
+let frames = [];
+let frame = 0;
+let playing = false;
+let last = 0;
+let interval = 1000 / 30;
+
+const info = document.getElementById('info');
+const playBtn = document.getElementById('playBtn');
+const stepBtn = document.getElementById('stepBtn');
+
+playBtn.onclick = () => (playing = !playing);
+stepBtn.onclick = () => {
+  playing = false;
+  advance();
+};
+
+const BODY = ['Nose','Neck','RShoulder','RElbow','RWrist','LShoulder','LElbow','LWrist','MidHip','RHip','RKnee','RAnkle','LHip','LKnee','LAnkle'];
+const child = {Neck:'Nose', RShoulder:'RElbow', RElbow:'RWrist', LShoulder:'LElbow', LElbow:'LWrist', RHip:'RKnee', RKnee:'RAnkle', LHip:'LKnee', LKnee:'LAnkle'};
+const MAP = {
+  Neck:['CC_Base_NeckTwist01','neck'],
+  RShoulder:['CC_Base_R_Upperarm','upperarm_r','shoulder_r'],
+  RElbow:['CC_Base_R_Forearm','forearm_r','elbow_r'],
+  RWrist:['CC_Base_R_Hand','hand_r','wrist_r'],
+  LShoulder:['CC_Base_L_Upperarm','upperarm_l','shoulder_l'],
+  LElbow:['CC_Base_L_Forearm','forearm_l','elbow_l'],
+  LWrist:['CC_Base_L_Hand','hand_l','wrist_l'],
+  RHip:['CC_Base_R_Thigh','thigh_r','hip_r'],
+  RKnee:['CC_Base_R_Calf','calf_r','knee_r'],
+  RAnkle:['CC_Base_R_Foot','foot_r','ankle_r'],
+  LHip:['CC_Base_L_Thigh','thigh_l','hip_l'],
+  LKnee:['CC_Base_L_Calf','calf_l','knee_l'],
+  LAnkle:['CC_Base_L_Foot','foot_l','ankle_l']
+};
+
+let GLOBAL_SCALE = 1;
+let MOTION_GAIN = 4;
+
+function toVec3(p) {
+  return new THREE.Vector3((p[0] - 0.5), (0.5 - p[1]), 0).multiplyScalar(GLOBAL_SCALE * MOTION_GAIN);
 }
+
+function rotBone(bone, a, b) {
+  if (!bone) return;
+  const rest = bone.userData.restDir;
+  if (!rest) return;
+  const target = new THREE.Vector3().subVectors(b, a).normalize();
+  if (!target.lengthSq()) return;
+  const q = new THREE.Quaternion().setFromUnitVectors(rest, target);
+  bone.quaternion.copy(bone.userData.restQuat).premultiply(q);
+}
+
+function applyFrame(f) {
+  if (!skeleton) return;
+  const pts = f.body;
+  for (const [name, boneName] of Object.entries(MAP)) {
+    const i = BODY.indexOf(name);
+    const j = BODY.indexOf(child[name]);
+    if (i === -1 || j === -1) continue;
+    const a = pts[i];
+    const b = pts[j];
+    if (!a || !b) continue;
+    const bone = skeleton.getBoneByName(boneName);
+    if (!bone) continue;
+    const a3 = toVec3(a);
+    const b3 = toVec3(b);
+    rotBone(bone, a3, b3);
+  }
+}
+
+function advance() {
+  if (!frames.length) return;
+  applyFrame(frames[frame]);
+  frame = (frame + 1) % frames.length;
+}
+
+function loop(t) {
+  requestAnimationFrame(loop);
+  if (playing && t - last > interval) {
+    last = t;
+    advance();
+  }
+  renderer.render(scene, camera);
+}
+loop(0);
+
+function parsePose(text) {
+  text = text.replace(/np\.float64\(([^)]+)\)/g, '$1').replace(/'/g, '"');
+  const arr = [];
+  for (const line of text.split(/\n+/)) {
+    const l = line.trim();
+    if (!l || l.startsWith('#')) continue;
+    arr.push(JSON.parse(l));
+  }
+  return arr;
+}
+
+function normalizeFrames(frames) {
+  const W = 1280, H = 720;
+  frames.forEach(f => {
+    Object.values(f).forEach(group => {
+      group.forEach(p => {
+        if (!p) return;
+        if (p[0] > 1 || p[1] > 1) {
+          p[0] /= W;
+          p[1] /= H;
+        }
+      });
+    });
+  });
+}
+
+function loadPoseFromText(text) {
+  frames = parsePose(text);
+  normalizeFrames(frames);
+  frame = 0;
+  console.log('Frames:', frames.length);
+}
+
+function setupSkeleton(sk) {
+  skeleton = sk;
+  skeleton.bones.forEach(bone => {
+    let dir;
+    if (bone.children.length) {
+      const childPos = new THREE.Vector3().setFromMatrixPosition(bone.children[0].matrixWorld);
+      const bonePos = new THREE.Vector3().setFromMatrixPosition(bone.matrixWorld);
+      dir = childPos.sub(bonePos).normalize();
+    } else {
+      dir = new THREE.Vector3().setFromMatrixColumn(bone.matrixWorld, 2).normalize();
+    }
+    bone.userData.restDir = dir.clone();
+    bone.userData.restQuat = bone.quaternion.clone();
+  });
+  Object.keys(MAP).forEach(k => {
+    const val = MAP[k];
+    if (Array.isArray(val)) {
+      MAP[k] = val.find(n => skeleton.getBoneByName(n)) || val[0];
+    }
+  });
+  info.textContent = skeleton.bones.map(b => b.name).join('\n');
+}
+
+function loadAvatar(src) {
+  const loader = new FBXLoader();
+  loader.load(src, fbx => {
+    mesh = fbx;
+    scene.add(mesh);
+    const bbox = new THREE.Box3().setFromObject(mesh);
+    const center = bbox.getCenter(new THREE.Vector3());
+    mesh.position.sub(center);
+    const size = bbox.getSize(new THREE.Vector3());
+    if (size.y < size.z) {
+      mesh.rotation.x = -Math.PI / 2;
+    }
+    bbox.setFromObject(mesh);
+    mesh.position.y -= bbox.min.y;
+    const sphere = bbox.getBoundingSphere(new THREE.Sphere());
+    const radius = sphere.radius;
+    camera.position.set(0, radius * 0.6, radius * 2);
+    camera.near = radius * 0.01;
+    camera.far = radius * 4;
+    camera.updateProjectionMatrix();
+    controls.target.copy(sphere.center).setY(radius * 0.6);
+    controls.update();
+    GLOBAL_SCALE = radius * 0.8;
+    let sk = null;
+    mesh.traverse(obj => {
+      if (obj.isSkinnedMesh && !sk) sk = obj.skeleton;
+    });
+    if (sk) setupSkeleton(sk);
+  });
+}
+
+// default files
+fetch('frame.pose').then(r => r.text()).then(loadPoseFromText);
+loadAvatar('avatar.fbx');
+
+fbxInput.onchange = e => {
+  if (!e.target.files[0]) return;
+  loadAvatar(URL.createObjectURL(e.target.files[0]));
+};
+poseInput.onchange = e => {
+  if (!e.target.files[0]) return;
+  const reader = new FileReader();
+  reader.onload = ev => loadPoseFromText(ev.target.result);
+  reader.readAsText(e.target.files[0]);
+};
