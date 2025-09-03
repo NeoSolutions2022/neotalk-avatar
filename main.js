@@ -31,6 +31,7 @@ let interval = 1000 / 30;
 const info = document.getElementById('info');
 const playBtn = document.getElementById('playBtn');
 const stepBtn = document.getElementById('stepBtn');
+const gainInput = document.getElementById('gain');
 
 playBtn.onclick = () => (playing = !playing);
 stepBtn.onclick = () => {
@@ -74,7 +75,11 @@ const MAP = {
 };
 
 let GLOBAL_SCALE = 1;
-let MOTION_GAIN = 4;
+let MOTION_GAIN = +gainInput.value || 20;
+
+gainInput.oninput = () => {
+  MOTION_GAIN = Math.max(0.1, +gainInput.value);
+};
 
 function toVec3(p) {
   return new THREE.Vector3((p[0] - 0.5), (0.5 - p[1]), 0).multiplyScalar(GLOBAL_SCALE * MOTION_GAIN);
@@ -86,8 +91,12 @@ function rotBone(bone, a, b) {
   if (!rest) return;
   const target = new THREE.Vector3().subVectors(b, a).normalize();
   if (!target.lengthSq()) return;
-  const q = new THREE.Quaternion().setFromUnitVectors(rest, target);
-  bone.quaternion.copy(bone.userData.restQuat).premultiply(q);
+  const qWorld = new THREE.Quaternion().setFromUnitVectors(rest, target);
+  const parentInv = bone.parent
+    ? bone.parent.getWorldQuaternion(new THREE.Quaternion()).invert()
+    : new THREE.Quaternion();
+  const localQ = parentInv.multiply(qWorld);
+  bone.quaternion.copy(bone.userData.restQuat).premultiply(localQ);
 }
 
 function applyFrame(f) {

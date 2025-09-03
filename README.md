@@ -4,6 +4,9 @@ Prova de conceito que carrega um avatar FBX e reproduz um arquivo `.pose` usando
 
 Abra a página e use os botões no topo para selecionar outro avatar ou arquivo de poses, além de controlar a animação.
 
+Use o campo **Escala** para multiplicar o deslocamento dos keypoints e
+exagerar os movimentos do avatar durante os testes.
+
 O parser reconhece arquivos `.pose` no formato:
 
 ```
