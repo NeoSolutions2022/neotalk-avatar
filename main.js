@@ -136,7 +136,11 @@ function loop(t) {
     last = t;
     advance();
   }
-  if (skeleton) skeleton.update();
+  if (mesh) mesh.updateMatrixWorld(true);
+  if (skeleton) {
+    skeleton.update();
+    skeleton.computeBoneTexture && skeleton.computeBoneTexture();
+  }
   renderer.render(scene, camera);
 }
 loop(0);
@@ -255,6 +259,8 @@ function loadPoseFromText(text) {
 
 function setupSkeleton(sk) {
   skeleton = sk;
+  // garante que as matrizes estejam atualizadas antes de calcular a pose de descanso
+  mesh && mesh.updateMatrixWorld(true);
   skeleton.bones.forEach(bone => {
     let dir;
     if (bone.children.length) {
@@ -281,29 +287,43 @@ function loadAvatar(src) {
   loader.load(src, fbx => {
     mesh = fbx;
     scene.add(mesh);
+
     const bbox = new THREE.Box3().setFromObject(mesh);
     const center = bbox.getCenter(new THREE.Vector3());
     mesh.position.sub(center);
+
     const size = bbox.getSize(new THREE.Vector3());
     if (size.y < size.z) {
       mesh.rotation.x = -Math.PI / 2;
     }
+
     bbox.setFromObject(mesh);
     mesh.position.y -= bbox.min.y;
     const sphere = bbox.getBoundingSphere(new THREE.Sphere());
     const radius = sphere.radius;
+
     camera.position.set(0, radius * 0.6, radius * 2);
     camera.near = radius * 0.01;
     camera.far = radius * 4;
     camera.updateProjectionMatrix();
     controls.target.copy(sphere.center).setY(radius * 0.6);
     controls.update();
+
     GLOBAL_SCALE = radius * 0.8;
-    let sk = null;
+
+    // coleta todas as malhas com skin e reusa um único skeleton para animar
+    const meshes = [];
     mesh.traverse(obj => {
-      if (obj.isSkinnedMesh && !sk) sk = obj.skeleton;
+      if (obj.isSkinnedMesh) meshes.push(obj);
     });
-    if (sk) setupSkeleton(sk);
+    if (!meshes.length) return;
+    const sk = meshes[0].skeleton;
+    setupSkeleton(sk);
+    meshes.forEach(sm => {
+      sm.bind(sk);
+      sm.normalizeSkinWeights();
+      sm.frustumCulled = false;
+    });
   });
 }
 
