@@ -92,11 +92,12 @@ function rotBone(bone, a, b) {
   const target = new THREE.Vector3().subVectors(b, a).normalize();
   if (!target.lengthSq()) return;
   const qWorld = new THREE.Quaternion().setFromUnitVectors(rest, target);
-  const parentInv = bone.parent
-    ? bone.parent.getWorldQuaternion(new THREE.Quaternion()).invert()
+  const parentWorld = bone.parent
+    ? bone.parent.getWorldQuaternion(new THREE.Quaternion())
     : new THREE.Quaternion();
-  const localQ = parentInv.multiply(qWorld);
-  bone.quaternion.copy(bone.userData.restQuat).premultiply(localQ);
+  const qLocal = parentWorld.clone().invert().multiply(qWorld).multiply(parentWorld);
+  bone.quaternion.copy(bone.userData.restQuat).premultiply(qLocal);
+  console.debug('rotBone', bone.name, qLocal.x.toFixed(3), qLocal.y.toFixed(3), qLocal.z.toFixed(3));
 }
 
 function applyFrame(f) {

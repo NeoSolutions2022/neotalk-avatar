@@ -21,6 +21,8 @@ Somente os pontos do corpo utilizados pelos braços são aplicados no esqueleto 
 
 Também é suportado o formato legado onde cada linha do arquivo é um dicionário Python com os grupos `body`, `left_hand`, `right_hand` e `face`. A normalização das coordenadas é feita automaticamente de acordo com a maior largura/altura encontradas.
 
+Durante a reprodução, os quaternions calculados para cada osso são registrados no console do navegador (`rotBone ...`), facilitando o debug caso o avatar permaneça imóvel.
+
 ## Executando com Docker
 
 ```bash
