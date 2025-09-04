@@ -4,7 +4,7 @@ import { FBXLoader } from 'three/examples/loaders/FBXLoader.js';
 
 const scene = new THREE.Scene();
 scene.add(new THREE.AmbientLight(0xffffff, 0.3));
-const grid = new THREE.GridHelper(4, 40, 0x444444, 0x222222);
+let grid = new THREE.GridHelper(4, 40, 0x444444, 0x222222);
 grid.rotation.x = -Math.PI / 2;
 scene.add(grid);
 
@@ -101,6 +101,8 @@ function rotBone(bone, a, b) {
 
 function applyFrame(f) {
   if (!skeleton) return;
+  // sempre recomeça da pose de descanso para evitar acumular rotações
+  skeleton.bones.forEach(b => b.quaternion.copy(b.userData.restQuat));
   const pts = f.body;
   for (const [name, boneName] of Object.entries(MAP)) {
     const i = BODY.indexOf(name);
@@ -232,15 +234,23 @@ function parsePose(text) {
 }
 
 function normalizeFrames(frames) {
-  const W = 1280, H = 720;
+  let maxX = 0, maxY = 0;
   frames.forEach(f => {
     Object.values(f).forEach(group => {
       group.forEach(p => {
         if (!p) return;
-        if (p[0] > 1 || p[1] > 1) {
-          p[0] /= W;
-          p[1] /= H;
-        }
+        if (p[0] > maxX) maxX = p[0];
+        if (p[1] > maxY) maxY = p[1];
+      });
+    });
+  });
+  if (maxX <= 1 && maxY <= 1) return;
+  frames.forEach(f => {
+    Object.values(f).forEach(group => {
+      group.forEach(p => {
+        if (!p) return;
+        p[0] /= maxX;
+        p[1] /= maxY;
       });
     });
   });
@@ -301,6 +311,12 @@ function loadAvatar(src) {
     mesh.position.y -= bbox.min.y;
     const sphere = bbox.getBoundingSphere(new THREE.Sphere());
     const radius = sphere.radius;
+
+    // redimensiona grid e câmera conforme tamanho do avatar
+    scene.remove(grid);
+    grid = new THREE.GridHelper(radius * 2, 40, 0x444444, 0x222222);
+    grid.rotation.x = -Math.PI / 2;
+    scene.add(grid);
 
     camera.position.set(0, radius * 0.6, radius * 2);
     camera.near = radius * 0.01;

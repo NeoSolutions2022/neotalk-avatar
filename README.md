@@ -4,8 +4,8 @@ Prova de conceito que carrega um avatar FBX e reproduz um arquivo `.pose` usando
 
 Abra a página e use os botões no topo para selecionar outro avatar ou arquivo de poses, além de controlar a animação.
 
-Use o campo **Escala** para multiplicar o deslocamento dos keypoints e
-exagerar os movimentos do avatar durante os testes.
+Use o campo **Escala** para multiplicar o deslocamento dos keypoints
+durante os testes (o valor pode ser alterado enquanto a animação roda).
 
 O parser reconhece arquivos `.pose` no formato:
 
@@ -17,9 +17,9 @@ Nose: 422.4 118.3 0.98
 Left Wrist: 380.2 250.1 0.96
 ```
 
-Somente os pontos do corpo utilizados pelos braços são aplicados no esqueleto do avatar nesta PoC.
+Somente os pontos do corpo utilizados pelos braços são aplicados no esqueleto do avatar nesta PoC. Cada frame começa da pose de descanso, evitando acúmulo de rotações.
 
-Também é suportado o formato legado onde cada linha do arquivo é um dicionário Python com os grupos `body`, `left_hand`, `right_hand` e `face`.
+Também é suportado o formato legado onde cada linha do arquivo é um dicionário Python com os grupos `body`, `left_hand`, `right_hand` e `face`. A normalização das coordenadas é feita automaticamente de acordo com a maior largura/altura encontradas.
 
 ## Executando com Docker
 
