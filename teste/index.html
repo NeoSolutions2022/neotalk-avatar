@@ -259,8 +259,8 @@
     const DEBUG_ARM = new URLSearchParams(window.location.search).get('debugArm') !== '0';
     const smooth = {};
     const debugToggles = {
-      leftArm: true,
-      rightArm: true,
+      leftArm: DEBUG_ARM,
+      rightArm: DEBUG_ARM,
       body: true,
       face: true
     };
@@ -268,6 +268,9 @@
     let headTargets = [];
     let lastHeadMatrix = null;
     let lastRigMatrix = null;
+    const HEAD_ANCHOR_ID = 'jawMid';
+    let headAnchorBase = null;
+    let headAnchorOffset = null;
 
     const EMA = (prev, cur, a = 0.35) => {
       if (!prev) return cur;
@@ -306,6 +309,15 @@
       return {
         x: a * p.x + c * p.y + e,
         y: b * p.x + d * p.y + f
+      };
+    };
+
+    const transformPoint = (matrix, point) => {
+      if (!matrix || !point) return null;
+      const { a, b, c, d, e, f } = matrix;
+      return {
+        x: a * point.x + c * point.y + e,
+        y: b * point.x + d * point.y + f
       };
     };
 
@@ -446,23 +458,11 @@
       return candidate;
     }
 
-    function isDebugActive(side) {
-      if (DEBUG_ARM) return true;
-      if (side) {
-        const arm = puppetArms[side];
-        return !(arm && arm.ready);
-      }
-      return Object.values(puppetArms).some((arm) => !arm.ready);
-    }
-
     function updateVisibility() {
-      const globalDebug = isDebugActive();
-      const leftDebug = isDebugActive('left');
-      const rightDebug = isDebugActive('right');
-      const showLeft = leftDebug && debugToggles.leftArm;
-      const showRight = rightDebug && debugToggles.rightArm;
-      const showBody = globalDebug && debugToggles.body;
-      const showFace = globalDebug && debugToggles.face;
+      const showLeft = debugToggles.leftArm;
+      const showRight = debugToggles.rightArm;
+      const showBody = debugToggles.body;
+      const showFace = debugToggles.face;
 
       if (armPaths.left) armPaths.left.style.display = showLeft ? 'block' : 'none';
       if (armPaths.right) armPaths.right.style.display = showRight ? 'block' : 'none';
@@ -486,22 +486,14 @@
 
       toggle(segments.face.map((guide) => guide.debug), showFace);
 
-      const updateArmElements = (side) => {
-        const overlay = puppetOverlays[side];
+      const updateArmElements = (side, showDebug) => {
         const arm = puppetArms[side];
-        if (overlay.upper) {
-          overlay.upper.style.display = arm.ready ? 'none' : 'block';
-        }
-        if (overlay.lower) {
-          overlay.lower.style.display = arm.ready ? 'none' : 'block';
-        }
-        const debugActive = side === 'left' ? leftDebug : rightDebug;
-        if (arm.upper) arm.upper.style.display = debugActive ? 'none' : '';
-        if (arm.lower) arm.lower.style.display = debugActive ? 'none' : '';
+        if (arm.upper) arm.upper.style.display = showDebug ? 'none' : '';
+        if (arm.lower) arm.lower.style.display = showDebug ? 'none' : '';
       };
 
-      updateArmElements('left');
-      updateArmElements('right');
+      updateArmElements('left', showLeft);
+      updateArmElements('right', showRight);
     }
 
     let frames = [];
@@ -515,10 +507,6 @@
     };
     const armPaths = { left: null, right: null };
     let running = false;
-    const puppetOverlays = {
-      left: { upper: null, lower: null },
-      right: { upper: null, lower: null }
-    };
     const puppetArms = {
       left: { upper: null, lower: null, ready: false, warningShown: false },
       right: { upper: null, lower: null, ready: false, warningShown: false }
@@ -798,14 +786,6 @@
       el.style.transform = `rotate(${ang}deg)`;
     }
 
-    function placeOverlaySegment(line, from, to) {
-      if (!line || !from || !to) return;
-      line.setAttribute('x1', from.x);
-      line.setAttribute('y1', from.y);
-      line.setAttribute('x2', to.x);
-      line.setAttribute('y2', to.y);
-    }
-
     function alignLimbToPuppet(rawArm, lengths) {
       if (!rawArm || !lengths) return null;
       const { A, B, C } = rawArm;
@@ -921,11 +901,14 @@
       return lastArmRigs[side] || null;
     }
 
-    function updateFaceGuides(kp, rig) {
+    function updateFaceGuides(kp, rig, anchors = {}) {
       if (!rig || !segments.face.length) return;
       let headMatrix = null;
+      let contourTarget = null;
+      let contourFallback = null;
+      let contourAnchorIndex = -1;
       for (const segment of segments.face) {
-        const { debug, handler, handlerEl, featurePart, ids, fallback, isContour } = segment;
+        const { debug, handler, handlerEl, featurePart, ids, fallback, isContour, anchorIndex } = segment;
         const points = [];
         for (let i = 0; i < ids.length; i += 1) {
           const id = ids[i];
@@ -956,6 +939,9 @@
 
         if (isContour && !headMatrix && fallback && target && fallback.length && target.length) {
           headMatrix = computeSimilarityTransform(fallback, target);
+          contourTarget = target;
+          contourFallback = fallback;
+          contourAnchorIndex = typeof anchorIndex === 'number' ? anchorIndex : -1;
         }
 
         if (!handler || !target) continue;
@@ -967,6 +953,41 @@
           element: handlerEl || handler.el || null
         });
       }
+      if (headMatrix && contourFallback && contourTarget && headAnchorBase) {
+        if (!headAnchorOffset) {
+          headAnchorOffset = {
+            x: headAnchorBase.x - PUPPET_SHOULDERS_MID.x,
+            y: headAnchorBase.y - PUPPET_SHOULDERS_MID.y
+          };
+        }
+        const offset = headAnchorOffset || { x: 0, y: 0 };
+        let desiredAnchor = null;
+        if (anchors.neck) {
+          desiredAnchor = {
+            x: anchors.neck.x + offset.x,
+            y: anchors.neck.y + offset.y
+          };
+        } else if (contourTarget && contourAnchorIndex >= 0 && contourAnchorIndex < contourTarget.length) {
+          desiredAnchor = contourTarget[contourAnchorIndex];
+        }
+        if (!desiredAnchor && contourFallback && contourAnchorIndex >= 0 && contourAnchorIndex < contourFallback.length) {
+          desiredAnchor = transformPoint(lastHeadMatrix || headMatrix, contourFallback[contourAnchorIndex]);
+        }
+        if (desiredAnchor) {
+          const currentAnchorSource = contourFallback && contourAnchorIndex >= 0 ? contourFallback[contourAnchorIndex] : headAnchorBase;
+          const currentAnchor = transformPoint(headMatrix, currentAnchorSource);
+          if (currentAnchor) {
+            const dx = desiredAnchor.x - currentAnchor.x;
+            const dy = desiredAnchor.y - currentAnchor.y;
+            headMatrix = {
+              ...headMatrix,
+              e: headMatrix.e + dx,
+              f: headMatrix.f + dy
+            };
+          }
+        }
+      }
+
       applyHeadTransform(headMatrix);
     }
 
@@ -1006,16 +1027,14 @@
       });
       const torsoRig = computeTorsoRig(LSh, RSh, LH, RH, rig);
 
-      const leftDebugActive = isDebugActive('left');
-      const rightDebugActive = isDebugActive('right');
+      const leftDebugActive = debugToggles.leftArm;
+      const rightDebugActive = debugToggles.rightArm;
 
       if (leftArmRig) {
         const { A, B, C } = leftArmRig;
         if (armPaths.left) {
           armPaths.left.setAttribute('d', `M ${A.x} ${A.y} L ${B.x} ${B.y} L ${C.x} ${C.y}`);
         }
-        placeOverlaySegment(puppetOverlays.left.upper, A, B);
-        placeOverlaySegment(puppetOverlays.left.lower, B, C);
         placeLine(segments.left.upper, A, B);
         placeLine(segments.left.lower, B, C);
         if (!leftDebugActive && puppetArms.left.ready) {
@@ -1029,8 +1048,6 @@
         if (armPaths.right) {
           armPaths.right.setAttribute('d', `M ${A.x} ${A.y} L ${B.x} ${B.y} L ${C.x} ${C.y}`);
         }
-        placeOverlaySegment(puppetOverlays.right.upper, A, B);
-        placeOverlaySegment(puppetOverlays.right.lower, B, C);
         placeLine(segments.right.upper, A, B);
         placeLine(segments.right.lower, B, C);
         if (!rightDebugActive && puppetArms.right.ready) {
@@ -1039,6 +1056,7 @@
         }
       }
 
+      let neckBase = null;
       if (torsoRig) {
         const { shoulders, hips, centerTop, centerBottom } = torsoRig;
         placeLine(segments.body.top, shoulders.left, shoulders.right);
@@ -1046,9 +1064,12 @@
         placeLine(segments.body.left, shoulders.left, hips.left);
         placeLine(segments.body.right, shoulders.right, hips.right);
         placeLine(segments.body.center, centerTop, centerBottom);
+        neckBase = mid(shoulders.left, shoulders.right);
+      } else if (LSh && RSh) {
+        neckBase = toRig(mid(LSh, RSh), rig);
       }
 
-      updateFaceGuides(kp, rig);
+      updateFaceGuides(kp, rig, { neck: neckBase });
 
       frameIndex = (frameIndex + 1) % frames.length;
       requestAnimationFrame(tick);
@@ -1096,6 +1117,8 @@
         }
         faceOverlayLayer.style.pointerEvents = 'none';
         faceFeatureRegistry.clear();
+        headAnchorBase = null;
+        headAnchorOffset = null;
         const skel = svgEl.getElementById('skeleton_1_');
         if (skel) skel.style.display = 'none';
         armPaths.left = document.createElementNS(NS, 'path');
@@ -1221,6 +1244,7 @@
             }
           }
 
+          const anchorIndex = guide.isContour ? guide.ids.indexOf(HEAD_ANCHOR_ID) : -1;
           segments.face.push({
             debug,
             handler,
@@ -1228,45 +1252,18 @@
             featurePart,
             ids: guide.ids,
             fallback,
-            isContour: Boolean(guide.isContour)
+            isContour: Boolean(guide.isContour),
+            anchorIndex
           });
+
+          if (guide.isContour && anchorIndex >= 0 && fallback[anchorIndex]) {
+            headAnchorBase = {
+              x: fallback[anchorIndex].x,
+              y: fallback[anchorIndex].y
+            };
+            headAnchorOffset = null;
+          }
         }
-
-        puppetOverlays.left.upper = document.createElementNS(NS, 'line');
-        puppetOverlays.left.upper.id = 'leftArmUpperOverlay';
-        puppetOverlays.left.upper.setAttribute('stroke', '#99AFB1');
-        puppetOverlays.left.upper.setAttribute('stroke-linecap', 'round');
-        puppetOverlays.left.upper.setAttribute('stroke-width', '46');
-        puppetOverlays.left.upper.setAttribute('opacity', '0.92');
-        puppetOverlays.left.upper.style.pointerEvents = 'none';
-        svgEl.appendChild(puppetOverlays.left.upper);
-
-        puppetOverlays.left.lower = document.createElementNS(NS, 'line');
-        puppetOverlays.left.lower.id = 'leftArmLowerOverlay';
-        puppetOverlays.left.lower.setAttribute('stroke', '#F3AF9D');
-        puppetOverlays.left.lower.setAttribute('stroke-linecap', 'round');
-        puppetOverlays.left.lower.setAttribute('stroke-width', '40');
-        puppetOverlays.left.lower.setAttribute('opacity', '0.96');
-        puppetOverlays.left.lower.style.pointerEvents = 'none';
-        svgEl.appendChild(puppetOverlays.left.lower);
-
-        puppetOverlays.right.upper = document.createElementNS(NS, 'line');
-        puppetOverlays.right.upper.id = 'rightArmUpperOverlay';
-        puppetOverlays.right.upper.setAttribute('stroke', '#99AFB1');
-        puppetOverlays.right.upper.setAttribute('stroke-linecap', 'round');
-        puppetOverlays.right.upper.setAttribute('stroke-width', '46');
-        puppetOverlays.right.upper.setAttribute('opacity', '0.92');
-        puppetOverlays.right.upper.style.pointerEvents = 'none';
-        svgEl.appendChild(puppetOverlays.right.upper);
-
-        puppetOverlays.right.lower = document.createElementNS(NS, 'line');
-        puppetOverlays.right.lower.id = 'rightArmLowerOverlay';
-        puppetOverlays.right.lower.setAttribute('stroke', '#F3AF9D');
-        puppetOverlays.right.lower.setAttribute('stroke-linecap', 'round');
-        puppetOverlays.right.lower.setAttribute('stroke-width', '40');
-        puppetOverlays.right.lower.setAttribute('opacity', '0.96');
-        puppetOverlays.right.lower.style.pointerEvents = 'none';
-        svgEl.appendChild(puppetOverlays.right.lower);
 
         const armCandidates = {
           left: {
@@ -1378,6 +1375,8 @@
     toggleButtons.forEach((button) => {
       const target = button.dataset.toggleTarget;
       if (!target || !(target in debugToggles)) return;
+      button.classList.toggle('inactive', !debugToggles[target]);
+      button.setAttribute('aria-pressed', String(debugToggles[target]));
       button.addEventListener('click', () => {
         debugToggles[target] = !debugToggles[target];
         button.classList.toggle('inactive', !debugToggles[target]);
