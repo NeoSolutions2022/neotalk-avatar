@@ -151,11 +151,15 @@
 
     const PUPPET_LEFT_SH = { x: 605.7, y: 294.3 };
     const PUPPET_RIGHT_SH = { x: 392.8, y: 294.3 };
+    const PUPPET_LEFT_EL = { x: 710.1, y: 294.0 };
+    const PUPPET_LEFT_WR = { x: 873.5, y: 300.3 };
     const PUPPET_SHOULDER_SPAN = PUPPET_LEFT_SH.x - PUPPET_RIGHT_SH.x;
     const PUPPET_SHOULDERS_MID = {
       x: (PUPPET_LEFT_SH.x + PUPPET_RIGHT_SH.x) / 2,
       y: PUPPET_LEFT_SH.y
     };
+    const PUPPET_UPPER_ARM_LEN = dist(PUPPET_LEFT_SH, PUPPET_LEFT_EL);
+    const PUPPET_LOWER_ARM_LEN = dist(PUPPET_LEFT_EL, PUPPET_LEFT_WR);
 
     const DEBUG_ARM = new URLSearchParams(window.location.search).get('debugArm') !== '0';
     const smooth = {};
@@ -328,6 +332,37 @@
       line.setAttribute('y2', to.y);
     }
 
+    function alignArmToPuppet(rawArm) {
+      if (!rawArm) return null;
+      const { A, B, C } = rawArm;
+      if (!A || !B || !C) return null;
+      const upperDx = B.x - A.x;
+      const upperDy = B.y - A.y;
+      const upperLen = Math.hypot(upperDx, upperDy);
+      if (upperLen < 1e-3) return null;
+      const upperUnitX = upperDx / upperLen;
+      const upperUnitY = upperDy / upperLen;
+      const alignedB = {
+        x: A.x + upperUnitX * PUPPET_UPPER_ARM_LEN,
+        y: A.y + upperUnitY * PUPPET_UPPER_ARM_LEN
+      };
+
+      const lowerDx = C.x - B.x;
+      const lowerDy = C.y - B.y;
+      const lowerLen = Math.hypot(lowerDx, lowerDy);
+      if (lowerLen < 1e-3) {
+        return { A, B: alignedB, C: alignedB };
+      }
+      const lowerUnitX = lowerDx / lowerLen;
+      const lowerUnitY = lowerDy / lowerLen;
+      const alignedC = {
+        x: alignedB.x + lowerUnitX * PUPPET_LOWER_ARM_LEN,
+        y: alignedB.y + lowerUnitY * PUPPET_LOWER_ARM_LEN
+      };
+
+      return { A, B: alignedB, C: alignedC };
+    }
+
     function tick() {
       if (!frames.length) return;
       const frame = frames[frameIndex];
@@ -356,10 +391,12 @@
 
       let currentArmRig = null;
       if (LSh && LE && LW) {
-        const A = toRig(LSh, rig);
-        const B = toRig(LE, rig);
-        const C = toRig(LW, rig);
-        currentArmRig = { A, B, C };
+        const rawRig = {
+          A: toRig(LSh, rig),
+          B: toRig(LE, rig),
+          C: toRig(LW, rig)
+        };
+        currentArmRig = alignArmToPuppet(rawRig) || rawRig;
         lastArmRig = currentArmRig;
       } else if (lastArmRig) {
         currentArmRig = lastArmRig;

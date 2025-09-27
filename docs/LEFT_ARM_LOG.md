@@ -20,3 +20,8 @@
 - Adicionei botões de alternância em `teste/index.html` para ativar/desativar individualmente as linhas azuis de debug do braço esquerdo, braço direito e do tronco.
 - A função `updateVisibility` agora respeita esses controles, permitindo observar cada membro isoladamente sem alterar o restante da instrumentação.
 - Acrescentei um segmento de tronco (`body_line`) que segue o alinhamento entre ombros e quadris para ajudar na orientação espacial do avatar durante o ajuste manual.
+
+## Passo 6 – Ajuste do comprimento dos segmentos sobrepostos
+- Calculei os comprimentos reais do braço esquerdo do avatar (`leftShoulder → leftElbow` e `leftElbow → leftWrist`) diretamente a partir do `skeleton_1_` contido em `boy.svg`.
+- Converto cada quadro da pose para o espaço do puppet e normalizo os vetores resultantes para preservar esses comprimentos enquanto mantenho os ângulos capturados no `pose_frames.json`.
+- Com isso, tanto a linha de debug azul quanto os segmentos sobrepostos seguem exatamente o esqueleto do avatar, sem alterar a visibilidade ou a arquitetura existente.
