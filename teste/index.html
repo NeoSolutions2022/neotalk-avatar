@@ -53,6 +53,47 @@
       display: block;
     }
 
+    #debugControls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      justify-content: center;
+      background: rgba(74, 139, 255, 0.08);
+      border-radius: 999px;
+      padding: 0.6rem 1rem;
+      border: 1px solid rgba(74, 139, 255, 0.18);
+    }
+
+    #debugControls span {
+      font-weight: 600;
+      font-size: 0.9rem;
+      letter-spacing: 0.01em;
+    }
+
+    .debug-toggle {
+      border: none;
+      border-radius: 999px;
+      padding: 0.4rem 0.9rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #1f2a44;
+      background: rgba(74, 139, 255, 0.18);
+      cursor: pointer;
+      transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease;
+      box-shadow: inset 0 0 0 1px rgba(74, 139, 255, 0.1);
+    }
+
+    .debug-toggle:hover {
+      background: rgba(74, 139, 255, 0.28);
+    }
+
+    .debug-toggle.inactive {
+      background: rgba(125, 139, 166, 0.14);
+      color: rgba(31, 42, 68, 0.6);
+      box-shadow: inset 0 0 0 1px rgba(125, 139, 166, 0.18);
+    }
+
     .joint {
       transform-box: fill-box;
       transform-origin: center;
@@ -88,6 +129,12 @@
   <main>
     <div id="stage" aria-live="polite"></div>
   </main>
+  <section id="debugControls" aria-label="Alternar linhas de debug">
+    <span>Linhas de debug:</span>
+    <button type="button" class="debug-toggle" data-toggle-target="leftArm" aria-pressed="true">Braço esquerdo</button>
+    <button type="button" class="debug-toggle" data-toggle-target="rightArm" aria-pressed="true">Braço direito</button>
+    <button type="button" class="debug-toggle" data-toggle-target="body" aria-pressed="true">Corpo</button>
+  </section>
   <div id="error" role="alert"></div>
   <script>
     const stage = document.getElementById('stage');
@@ -112,6 +159,11 @@
 
     const DEBUG_ARM = new URLSearchParams(window.location.search).get('debugArm') !== '0';
     const smooth = {};
+    const debugToggles = {
+      leftArm: true,
+      rightArm: true,
+      body: true
+    };
 
     const EMA = (prev, cur, a = 0.35) => {
       if (!prev) return cur;
@@ -202,10 +254,21 @@
 
     function updateVisibility() {
       const showDebug = isDebugActive();
-      if (armPath) armPath.style.display = showDebug ? 'block' : 'none';
-      for (const rect of Object.values(segments)) {
+      const showLeft = showDebug && debugToggles.leftArm;
+      const showRight = showDebug && debugToggles.rightArm;
+      const showBody = showDebug && debugToggles.body;
+
+      if (armPath) armPath.style.display = showLeft ? 'block' : 'none';
+      for (const rect of [segments.L_upper, segments.L_lower]) {
         if (!rect) continue;
-        rect.style.display = showDebug ? 'block' : 'none';
+        rect.style.display = showLeft ? 'block' : 'none';
+      }
+      for (const rect of [segments.R_upper, segments.R_lower]) {
+        if (!rect) continue;
+        rect.style.display = showRight ? 'block' : 'none';
+      }
+      if (segments.body) {
+        segments.body.style.display = showBody ? 'block' : 'none';
       }
       if (puppetOverlay.upper) {
         puppetOverlay.upper.style.display = puppetArmReady ? 'none' : 'block';
@@ -220,7 +283,13 @@
     let frames = [];
     let frameIndex = 0;
     let svgEl = null;
-    const segments = {};
+    const segments = {
+      L_upper: null,
+      L_lower: null,
+      R_upper: null,
+      R_lower: null,
+      body: null
+    };
     let armPath = null;
     let running = false;
     let upperArmEl = null;
@@ -282,6 +351,8 @@
       const RSh = safeKP(kp, 'rightShoulder');
       const RE = safeKP(kp, 'rightElbow');
       const RW = safeKP(kp, 'rightWrist');
+      const LH = safeKP(kp, 'leftHip');
+      const RH = safeKP(kp, 'rightHip');
 
       let currentArmRig = null;
       if (LSh && LE && LW) {
@@ -322,6 +393,9 @@
       if (showDebug) {
         placeSegment(segments.R_upper, RSh, RE, rig);
         placeSegment(segments.R_lower, RE, RW, rig);
+        if (segments.body && LSh && RSh && LH && RH) {
+          placeSegment(segments.body, mid(LSh, RSh), mid(LH, RH), rig);
+        }
       }
 
       frameIndex = (frameIndex + 1) % frames.length;
@@ -363,6 +437,7 @@
         segments.L_lower = seg('L_lower');
         segments.R_upper = seg('R_upper');
         segments.R_lower = seg('R_lower');
+        segments.body = seg('body_line');
 
         puppetOverlay.upper = document.createElementNS(NS, 'line');
         puppetOverlay.upper.id = 'leftArmUpperOverlay';
@@ -458,6 +533,18 @@
         console.error(err);
         showError('Erro ao carregar pose_frames.json: ' + err.message);
       });
+
+    const toggleButtons = Array.from(document.querySelectorAll('[data-toggle-target]'));
+    toggleButtons.forEach((button) => {
+      const target = button.dataset.toggleTarget;
+      if (!target || !(target in debugToggles)) return;
+      button.addEventListener('click', () => {
+        debugToggles[target] = !debugToggles[target];
+        button.classList.toggle('inactive', !debugToggles[target]);
+        button.setAttribute('aria-pressed', String(debugToggles[target]));
+        updateVisibility();
+      });
+    });
   </script>
 </body>
 </html>

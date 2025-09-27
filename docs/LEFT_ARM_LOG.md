@@ -15,3 +15,8 @@
 
 ## Passo 4 – Próximos passos
 - Caso `boy.svg` seja atualizado com camadas reais para o braço esquerdo, basta garantir que seus IDs apareçam em `upperCandidates`/`lowerCandidates`; os overlays serão ocultados automaticamente.
+
+## Passo 5 – Controles de debug segmentados
+- Adicionei botões de alternância em `teste/index.html` para ativar/desativar individualmente as linhas azuis de debug do braço esquerdo, braço direito e do tronco.
+- A função `updateVisibility` agora respeita esses controles, permitindo observar cada membro isoladamente sem alterar o restante da instrumentação.
+- Acrescentei um segmento de tronco (`body_line`) que segue o alinhamento entre ombros e quadris para ajudar na orientação espacial do avatar durante o ajuste manual.
