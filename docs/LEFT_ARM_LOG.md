@@ -25,3 +25,8 @@
 - Calculei os comprimentos reais do braço esquerdo do avatar (`leftShoulder → leftElbow` e `leftElbow → leftWrist`) diretamente a partir do `skeleton_1_` contido em `boy.svg`.
 - Converto cada quadro da pose para o espaço do puppet e normalizo os vetores resultantes para preservar esses comprimentos enquanto mantenho os ângulos capturados no `pose_frames.json`.
 - Com isso, tanto a linha de debug azul quanto os segmentos sobrepostos seguem exatamente o esqueleto do avatar, sem alterar a visibilidade ou a arquitetura existente.
+
+## Passo 7 – Reconstrução do rig de debug para corpo e braços
+- Revisei `frame.pose` e confirmei, via o conversor `convert_pose.py`, a ordem dos pontos corporais exportados (`leftShoulder`, `rightShoulder`, `leftHip`, `rightHip`, etc.) para garantir que o rig reflita fielmente o arquivo `.pose` original.
+- Substituí os retângulos de apoio por segmentos (`<line>`) que conectam diretamente ombros, cotovelos, punhos e quadris, permitindo visualizar a mesma malha simplificada ilustrada na referência do cliente.
+- Acrescentei linhas dedicadas às bordas esquerda/direita e ao centro do tronco, formando um retângulo/coluna que replica o corpo do rig azul sem interferir na visibilidade da linha de debug já existente.

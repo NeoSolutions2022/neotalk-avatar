@@ -209,32 +209,19 @@
       y: rig.offset.y + (p.y - rig.origin.y) * rig.scale
     });
 
-    function placeSegment(rect, from, to, rig) {
-      if (!rect || !from || !to || !rig) return;
-      const A = toRig(from, rig);
-      const B = toRig(to, rig);
-      const len = dist(A, B);
-      const ang = angle(A, B);
-      rect.setAttribute('x', A.x - 9);
-      rect.setAttribute('y', A.y);
-      rect.setAttribute('width', 18);
-      rect.setAttribute('height', len);
-      rect.setAttribute('rx', 10);
-      rect.style.transformOrigin = '9px 0px';
-      rect.style.transform = `rotate(${ang}deg)`;
+    function placeLine(line, start, end) {
+      if (!line || !start || !end) return;
+      line.setAttribute('x1', start.x);
+      line.setAttribute('y1', start.y);
+      line.setAttribute('x2', end.x);
+      line.setAttribute('y2', end.y);
     }
 
-    function placeRigSegment(rect, start, end) {
-      if (!rect || !start || !end) return;
-      const len = dist(start, end);
-      const ang = angle(start, end);
-      rect.setAttribute('x', start.x - 9);
-      rect.setAttribute('y', start.y);
-      rect.setAttribute('width', 18);
-      rect.setAttribute('height', len);
-      rect.setAttribute('rx', 10);
-      rect.style.transformOrigin = '9px 0px';
-      rect.style.transform = `rotate(${ang}deg)`;
+    function placeRigLine(line, from, to, rig) {
+      if (!line || !from || !to || !rig) return;
+      const A = toRig(from, rig);
+      const B = toRig(to, rig);
+      placeLine(line, A, B);
     }
 
     function clampAngle(prev, next) {
@@ -263,17 +250,24 @@
       const showBody = showDebug && debugToggles.body;
 
       if (armPath) armPath.style.display = showLeft ? 'block' : 'none';
-      for (const rect of [segments.L_upper, segments.L_lower]) {
-        if (!rect) continue;
-        rect.style.display = showLeft ? 'block' : 'none';
-      }
-      for (const rect of [segments.R_upper, segments.R_lower]) {
-        if (!rect) continue;
-        rect.style.display = showRight ? 'block' : 'none';
-      }
-      if (segments.body) {
-        segments.body.style.display = showBody ? 'block' : 'none';
-      }
+
+      const toggle = (elements, show) => {
+        for (const el of elements) {
+          if (!el) continue;
+          el.style.display = show ? 'block' : 'none';
+        }
+      };
+
+      toggle([segments.left.upper, segments.left.lower], showLeft);
+      toggle([segments.right.upper, segments.right.lower], showRight);
+      toggle([
+        segments.body.top,
+        segments.body.bottom,
+        segments.body.left,
+        segments.body.right,
+        segments.body.center
+      ], showBody);
+
       if (puppetOverlay.upper) {
         puppetOverlay.upper.style.display = puppetArmReady ? 'none' : 'block';
       }
@@ -288,11 +282,9 @@
     let frameIndex = 0;
     let svgEl = null;
     const segments = {
-      L_upper: null,
-      L_lower: null,
-      R_upper: null,
-      R_lower: null,
-      body: null
+      left: { upper: null, lower: null },
+      right: { upper: null, lower: null },
+      body: { top: null, bottom: null, left: null, right: null, center: null }
     };
     let armPath = null;
     let running = false;
@@ -304,16 +296,15 @@
     const lastArmAngles = { upper: null, lower: null };
     const puppetOverlay = { upper: null, lower: null };
 
-    function seg(id) {
-      const r = document.createElementNS(NS, 'rect');
-      r.id = id;
-      r.setAttribute('width', '18');
-      r.setAttribute('height', '120');
-      r.setAttribute('rx', '10');
-      r.setAttribute('fill', '#4a8bff');
-      r.classList.add('joint');
-      svgEl.appendChild(r);
-      return r;
+    function seg(id, stroke = '#4a8bff', width = 10) {
+      const line = document.createElementNS(NS, 'line');
+      line.id = id;
+      line.setAttribute('stroke', stroke);
+      line.setAttribute('stroke-width', width);
+      line.setAttribute('stroke-linecap', 'round');
+      line.classList.add('joint');
+      svgEl.appendChild(line);
+      return line;
     }
 
     function rotatePuppetSegment(el, origin, target, key) {
@@ -417,8 +408,8 @@
 
       if (currentArmRig && showDebug) {
         const { A, B, C } = currentArmRig;
-        placeRigSegment(segments.L_upper, A, B);
-        placeRigSegment(segments.L_lower, B, C);
+        placeLine(segments.left.upper, A, B);
+        placeLine(segments.left.lower, B, C);
       }
 
       if (currentArmRig && !showDebug && puppetArmReady) {
@@ -428,10 +419,14 @@
       }
 
       if (showDebug) {
-        placeSegment(segments.R_upper, RSh, RE, rig);
-        placeSegment(segments.R_lower, RE, RW, rig);
-        if (segments.body && LSh && RSh && LH && RH) {
-          placeSegment(segments.body, mid(LSh, RSh), mid(LH, RH), rig);
+        if (RSh && RE) placeRigLine(segments.right.upper, RSh, RE, rig);
+        if (RE && RW) placeRigLine(segments.right.lower, RE, RW, rig);
+        if (LSh && RSh) placeRigLine(segments.body.top, LSh, RSh, rig);
+        if (LH && RH) placeRigLine(segments.body.bottom, LH, RH, rig);
+        if (LSh && LH) placeRigLine(segments.body.left, LSh, LH, rig);
+        if (RSh && RH) placeRigLine(segments.body.right, RSh, RH, rig);
+        if (LSh && RSh && LH && RH) {
+          placeRigLine(segments.body.center, mid(LSh, RSh), mid(LH, RH), rig);
         }
       }
 
@@ -470,11 +465,15 @@
         armPath.setAttribute('stroke-linecap', 'round');
         armPath.setAttribute('stroke-linejoin', 'round');
         svgEl.appendChild(armPath);
-        segments.L_upper = seg('L_upper');
-        segments.L_lower = seg('L_lower');
-        segments.R_upper = seg('R_upper');
-        segments.R_lower = seg('R_lower');
-        segments.body = seg('body_line');
+        segments.left.upper = seg('L_upper');
+        segments.left.lower = seg('L_lower');
+        segments.right.upper = seg('R_upper');
+        segments.right.lower = seg('R_lower');
+        segments.body.top = seg('body_top', '#4a8bff', 12);
+        segments.body.bottom = seg('body_bottom', '#4a8bff', 12);
+        segments.body.left = seg('body_left', '#4a8bff', 12);
+        segments.body.right = seg('body_right', '#4a8bff', 12);
+        segments.body.center = seg('body_center', '#4a8bff', 10);
 
         puppetOverlay.upper = document.createElementNS(NS, 'line');
         puppetOverlay.upper.id = 'leftArmUpperOverlay';
