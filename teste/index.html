@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <title>Avatar por pose</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at 25% 25%, #ffffff 0, #f6f8fc 45%, #e6ecfb 100%);
+      color: #1f2a44;
+    }
+    h1 {
+      font-size: 1.6rem;
+      margin-bottom: 0.25rem;
+    }
+    #info {
+      font-size: 0.95rem;
+      margin-bottom: 1.5rem;
+      opacity: 0.75;
+    }
+    main {
+      position: relative;
+      width: min(520px, 90vw);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    svg {
+      width: 100%;
+      height: auto;
+      max-height: 620px;
+    }
+    .joint {
+      transform-box: fill-box;
+      transform-origin: center;
+      transition: transform 60ms linear;
+    }
+    .limb {
+      rx: 12px;
+      fill: #6aa9ff;
+      filter: drop-shadow(0 2px 6px rgba(46, 79, 143, 0.15));
+    }
+    #head {
+      fill: #ffd1a9;
+      filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.25));
+    }
+    #torso {
+      fill: #6aa9ff;
+      filter: drop-shadow(0 3px 8px rgba(30, 60, 114, 0.2));
+    }
+    #boy-reference {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: auto;
+      opacity: 0.12;
+      pointer-events: none;
+    }
+    #error {
+      position: fixed;
+      bottom: 1.2rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(220, 53, 69, 0.92);
+      color: #fff;
+      padding: 0.8rem 1.2rem;
+      border-radius: 12px;
+      box-shadow: 0 6px 20px rgba(220, 53, 69, 0.4);
+      display: none;
+      max-width: min(480px, 90vw);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <h1>Avatar 2D animado por <code>.pose</code></h1>
+  <div id="info">Animando a partir de <code>pose_frames.json</code></div>
+  <main>
+    <img id="boy-reference" src="../boy.svg" alt="Referência do avatar" />
+    <svg viewBox="0 0 600 800" role="img" aria-label="Avatar simplificado animado">
+      <rect id="torso" class="joint" x="290" y="260" width="24" height="220" rx="12" />
+      <circle id="head" class="joint" cx="302" cy="200" r="52" />
+      <rect id="lu" class="joint limb" x="250" y="260" width="24" height="140" />
+      <rect id="ll" class="joint limb" x="240" y="380" width="24" height="140" />
+      <rect id="ru" class="joint limb" x="330" y="260" width="24" height="140" />
+      <rect id="rl" class="joint limb" x="340" y="380" width="24" height="140" />
+    </svg>
+  </main>
+  <div id="error" role="alert"></div>
+  <script>
+    const angle = (a, b) => Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+    const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
+    const showError = (msg) => {
+      const box = document.getElementById('error');
+      box.textContent = msg;
+      box.style.display = 'block';
+    };
+
+    const requiredKeys = [
+      'leftShoulder', 'rightShoulder',
+      'leftElbow', 'rightElbow',
+      'leftWrist', 'rightWrist',
+      'leftHip', 'rightHip'
+    ];
+
+    const elements = {
+      head: document.getElementById('head'),
+      torso: document.getElementById('torso'),
+      lu: document.getElementById('lu'),
+      ll: document.getElementById('ll'),
+      ru: document.getElementById('ru'),
+      rl: document.getElementById('rl')
+    };
+
+    let frames = [];
+    let frameIndex = 0;
+
+    function applyFrame(frame) {
+      const kp = frame.keypoints;
+
+      if (!kp) {
+        showError('Frame inválido: não há propriedade "keypoints".');
+        return;
+      }
+
+      const missing = requiredKeys.filter((key) => !kp[key]);
+      if (missing.length) {
+        showError(`Frame inválido: faltam pontos ${missing.join(', ')}.`);
+        return;
+      }
+
+      const LSh = kp.leftShoulder;
+      const RSh = kp.rightShoulder;
+      const LE = kp.leftElbow;
+      const RE = kp.rightElbow;
+      const LW = kp.leftWrist;
+      const RW = kp.rightWrist;
+      const LH = kp.leftHip;
+      const RH = kp.rightHip;
+
+      const shouldersMid = mid(LSh, RSh);
+      const hipsMid = mid(LH, RH);
+
+      const headY = shouldersMid.y - 60;
+      elements.head.setAttribute('cx', shouldersMid.x);
+      elements.head.setAttribute('cy', headY);
+
+      const torsoAngle = angle(shouldersMid, hipsMid);
+      elements.torso.setAttribute('x', shouldersMid.x - 12);
+      elements.torso.setAttribute('y', shouldersMid.y + 8);
+      elements.torso.style.transformOrigin = '12px 0px';
+      elements.torso.style.transform = `rotate(${torsoAngle}deg)`;
+
+      const angLU = angle(LSh, LE);
+      elements.lu.setAttribute('x', LSh.x - 12);
+      elements.lu.setAttribute('y', LSh.y);
+      elements.lu.style.transformOrigin = '12px 0px';
+      elements.lu.style.transform = `rotate(${angLU}deg)`;
+
+      const angLL = angle(LE, LW);
+      elements.ll.setAttribute('x', LE.x - 12);
+      elements.ll.setAttribute('y', LE.y);
+      elements.ll.style.transformOrigin = '12px 0px';
+      elements.ll.style.transform = `rotate(${angLL}deg)`;
+
+      const angRU = angle(RSh, RE);
+      elements.ru.setAttribute('x', RSh.x - 12);
+      elements.ru.setAttribute('y', RSh.y);
+      elements.ru.style.transformOrigin = '12px 0px';
+      elements.ru.style.transform = `rotate(${angRU}deg)`;
+
+      const angRL = angle(RE, RW);
+      elements.rl.setAttribute('x', RE.x - 12);
+      elements.rl.setAttribute('y', RE.y);
+      elements.rl.style.transformOrigin = '12px 0px';
+      elements.rl.style.transform = `rotate(${angRL}deg)`;
+    }
+
+    function tick() {
+      if (!frames.length) return;
+      applyFrame(frames[frameIndex]);
+      frameIndex = (frameIndex + 1) % frames.length;
+      requestAnimationFrame(tick);
+    }
+
+    fetch('pose_frames.json')
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status} ao carregar pose_frames.json`);
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (!Array.isArray(data) || !data.length) {
+          showError('Arquivo pose_frames.json vazio ou inválido.');
+          return;
+        }
+        frames = data;
+        requestAnimationFrame(tick);
+      })
+      .catch((err) => {
+        console.error(err);
+        showError('Erro ao carregar pose_frames.json: ' + err.message);
+      });
+  </script>
+</body>
+</html>

@@ -1,0 +1,54 @@
+[
+  {
+    "keypoints": {
+      "nose": { "x": 300, "y": 160 },
+      "leftShoulder": { "x": 340, "y": 240 },
+      "rightShoulder": { "x": 260, "y": 240 },
+      "leftElbow": { "x": 380, "y": 320 },
+      "rightElbow": { "x": 220, "y": 320 },
+      "leftWrist": { "x": 400, "y": 420 },
+      "rightWrist": { "x": 200, "y": 420 },
+      "leftHip": { "x": 330, "y": 400 },
+      "rightHip": { "x": 270, "y": 400 }
+    }
+  },
+  {
+    "keypoints": {
+      "nose": { "x": 300, "y": 165 },
+      "leftShoulder": { "x": 340, "y": 240 },
+      "rightShoulder": { "x": 260, "y": 240 },
+      "leftElbow": { "x": 390, "y": 310 },
+      "rightElbow": { "x": 210, "y": 340 },
+      "leftWrist": { "x": 430, "y": 360 },
+      "rightWrist": { "x": 170, "y": 450 },
+      "leftHip": { "x": 335, "y": 400 },
+      "rightHip": { "x": 265, "y": 400 }
+    }
+  },
+  {
+    "keypoints": {
+      "nose": { "x": 300, "y": 162 },
+      "leftShoulder": { "x": 338, "y": 242 },
+      "rightShoulder": { "x": 262, "y": 238 },
+      "leftElbow": { "x": 360, "y": 330 },
+      "rightElbow": { "x": 210, "y": 310 },
+      "leftWrist": { "x": 340, "y": 420 },
+      "rightWrist": { "x": 190, "y": 380 },
+      "leftHip": { "x": 330, "y": 402 },
+      "rightHip": { "x": 270, "y": 398 }
+    }
+  },
+  {
+    "keypoints": {
+      "nose": { "x": 300, "y": 165 },
+      "leftShoulder": { "x": 340, "y": 240 },
+      "rightShoulder": { "x": 260, "y": 240 },
+      "leftElbow": { "x": 390, "y": 320 },
+      "rightElbow": { "x": 220, "y": 330 },
+      "leftWrist": { "x": 440, "y": 380 },
+      "rightWrist": { "x": 220, "y": 420 },
+      "leftHip": { "x": 332, "y": 402 },
+      "rightHip": { "x": 268, "y": 398 }
+    }
+  }
+]
