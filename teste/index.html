@@ -290,7 +290,7 @@
         segments.body.center
       ], showBody);
 
-      toggle(segments.face.map((guide) => guide.polyline), showFace);
+      toggle(segments.face.map((guide) => guide.debug), showFace);
 
       const updateArmElements = (side) => {
         const overlay = puppetOverlays[side];
@@ -355,6 +355,28 @@
       poly.setAttribute('stroke-linecap', 'round');
       poly.setAttribute('stroke-linejoin', 'round');
       poly.classList.add('joint');
+      svgEl.appendChild(poly);
+      return poly;
+    }
+
+    function faceFeature(id, options = {}) {
+      const {
+        stroke = '#1f2a44',
+        width = 6,
+        fill = 'none',
+        opacity = 1,
+        join = 'round',
+        cap = 'round'
+      } = options;
+      const poly = document.createElementNS(NS, 'polyline');
+      poly.id = id;
+      poly.setAttribute('fill', fill);
+      poly.setAttribute('stroke', stroke);
+      poly.setAttribute('stroke-width', width);
+      poly.setAttribute('stroke-linecap', cap);
+      poly.setAttribute('stroke-linejoin', join);
+      poly.setAttribute('opacity', opacity);
+      poly.style.pointerEvents = 'none';
       svgEl.appendChild(poly);
       return poly;
     }
@@ -518,7 +540,7 @@
     function updateFaceGuides(kp, rig) {
       if (!rig || !segments.face.length) return;
       for (const guide of segments.face) {
-        const { polyline, ids, fallback } = guide;
+        const { debug, feature, ids, fallback } = guide;
         const points = [];
         for (let i = 0; i < ids.length; i += 1) {
           const id = ids[i];
@@ -534,9 +556,11 @@
         }
 
         if (points.length === ids.length) {
-          placePolyline(polyline, points);
+          placePolyline(debug, points);
+          if (feature) placePolyline(feature, points);
         } else if (fallback && fallback.length) {
-          placePolyline(polyline, fallback);
+          placePolyline(debug, fallback);
+          if (feature) placePolyline(feature, fallback);
         }
       }
     }
@@ -676,39 +700,85 @@
         segments.body.center = seg('body_center', '#4a8bff', 10);
 
         const faceGuides = [
-          { id: 'face_contour', ids: [
-            'topMid', 'rightTop0', 'rightTop1', 'rightJaw0', 'rightJaw1', 'rightJaw2',
-            'rightJaw3', 'rightJaw4', 'rightJaw5', 'rightJaw6', 'rightJaw7', 'jawMid',
-            'leftJaw7', 'leftJaw6', 'leftJaw5', 'leftJaw4', 'leftJaw3', 'leftJaw2',
-            'leftJaw1', 'leftJaw0', 'leftTop1', 'leftTop0', 'topMid'
-          ], width: 8 },
-          { id: 'face_brow_right', ids: ['rightBrow0', 'rightBrow1', 'rightBrow2', 'rightBrow3', 'rightBrow4'] },
-          { id: 'face_brow_left', ids: ['leftBrow0', 'leftBrow1', 'leftBrow2', 'leftBrow3', 'leftBrow4'] },
-          { id: 'face_eye_right', ids: ['rightEye0', 'rightEye1', 'rightEye2', 'rightEye3', 'rightEye4', 'rightEye5', 'rightEye0'], width: 5 },
-          { id: 'face_eye_left', ids: ['leftEye0', 'leftEye1', 'leftEye2', 'leftEye3', 'leftEye4', 'leftEye5', 'leftEye0'], width: 5 },
-          { id: 'face_nose_bridge', ids: ['nose0', 'nose1', 'nose2', 'nose3', 'nose4'] },
-          { id: 'face_nose_base', ids: ['rightNose0', 'rightNose1', 'nose4', 'leftNose1', 'leftNose0'], width: 5 },
-          { id: 'face_mouth_outer', ids: [
-            'rightMouthCorner', 'rightUpperLipTop0', 'rightUpperLipTop1', 'upperLipTopMid',
-            'leftUpperLipTop1', 'leftUpperLipTop0', 'leftMouthCorner', 'leftLowerLipBottom0',
-            'leftLowerLipBottom1', 'lowerLipBottomMid', 'rightLowerLipBottom1', 'rightLowerLipBottom0',
-            'rightMouthCorner'
-          ], width: 7 },
-          { id: 'face_mouth_inner', ids: [
-            'rightMouthCorner', 'rightUpperLipBottom1', 'upperLipBottomMid', 'leftUpperLipBottom1',
-            'leftMouthCorner', 'leftLowerLipTop0', 'lowerLipTopMid', 'rightLowerLipTop0', 'rightMouthCorner'
-          ], width: 4 }
+          {
+            id: 'face_contour',
+            ids: [
+              'topMid', 'rightTop0', 'rightTop1', 'rightJaw0', 'rightJaw1', 'rightJaw2',
+              'rightJaw3', 'rightJaw4', 'rightJaw5', 'rightJaw6', 'rightJaw7', 'jawMid',
+              'leftJaw7', 'leftJaw6', 'leftJaw5', 'leftJaw4', 'leftJaw3', 'leftJaw2',
+              'leftJaw1', 'leftJaw0', 'leftTop1', 'leftTop0', 'topMid'
+            ],
+            width: 8
+          },
+          {
+            id: 'face_brow_right',
+            ids: ['rightBrow0', 'rightBrow1', 'rightBrow2', 'rightBrow3', 'rightBrow4'],
+            feature: { id: 'brow_right_feature', stroke: '#2f1a15', width: 18, opacity: 0.95 }
+          },
+          {
+            id: 'face_brow_left',
+            ids: ['leftBrow0', 'leftBrow1', 'leftBrow2', 'leftBrow3', 'leftBrow4'],
+            feature: { id: 'brow_left_feature', stroke: '#2f1a15', width: 18, opacity: 0.95 }
+          },
+          {
+            id: 'face_eye_right',
+            ids: ['rightEye0', 'rightEye1', 'rightEye2', 'rightEye3', 'rightEye4', 'rightEye5', 'rightEye0'],
+            width: 5,
+            feature: { id: 'eye_right_feature', stroke: '#111826', width: 12, opacity: 0.92 }
+          },
+          {
+            id: 'face_eye_left',
+            ids: ['leftEye0', 'leftEye1', 'leftEye2', 'leftEye3', 'leftEye4', 'leftEye5', 'leftEye0'],
+            width: 5,
+            feature: { id: 'eye_left_feature', stroke: '#111826', width: 12, opacity: 0.92 }
+          },
+          {
+            id: 'face_nose_bridge',
+            ids: ['nose0', 'nose1', 'nose2', 'nose3', 'nose4'],
+            feature: { id: 'nose_bridge_feature', stroke: '#d88479', width: 10, opacity: 0.9 }
+          },
+          {
+            id: 'face_nose_base',
+            ids: ['rightNose0', 'rightNose1', 'nose4', 'leftNose1', 'leftNose0'],
+            width: 5,
+            feature: { id: 'nose_base_feature', stroke: '#ce6f60', width: 10, opacity: 0.9 }
+          },
+          {
+            id: 'face_mouth_outer',
+            ids: [
+              'rightMouthCorner', 'rightUpperLipTop0', 'rightUpperLipTop1', 'upperLipTopMid',
+              'leftUpperLipTop1', 'leftUpperLipTop0', 'leftMouthCorner', 'leftLowerLipBottom0',
+              'leftLowerLipBottom1', 'lowerLipBottomMid', 'rightLowerLipBottom1', 'rightLowerLipBottom0',
+              'rightMouthCorner'
+            ],
+            width: 7,
+            feature: { id: 'mouth_outer_feature', stroke: '#c75a4a', width: 14, opacity: 0.95 }
+          },
+          {
+            id: 'face_mouth_inner',
+            ids: [
+              'rightMouthCorner', 'rightUpperLipBottom1', 'upperLipBottomMid', 'leftUpperLipBottom1',
+              'leftMouthCorner', 'leftLowerLipTop0', 'lowerLipTopMid', 'rightLowerLipTop0', 'rightMouthCorner'
+            ],
+            width: 4,
+            feature: { id: 'mouth_inner_feature', stroke: '#9f3a34', width: 10, opacity: 0.9 }
+          }
         ];
 
         for (const guide of faceGuides) {
-          const poly = faceGuide(guide.id, '#4a8bff', guide.width ?? 6);
-          const fallback = setPolylinePoints(poly, guide.ids);
+          const debug = faceGuide(guide.id, '#4a8bff', guide.width ?? 6);
+          const fallback = setPolylinePoints(debug, guide.ids);
           if (!fallback) {
             console.warn(`Não foi possível construir a linha de rosto ${guide.id}`);
-            poly.remove();
+            debug.remove();
             continue;
           }
-          segments.face.push({ polyline: poly, ids: guide.ids, fallback });
+          let feature = null;
+          if (guide.feature) {
+            feature = faceFeature(guide.feature.id, guide.feature);
+            placePolyline(feature, fallback);
+          }
+          segments.face.push({ debug, feature, ids: guide.ids, fallback });
         }
 
         puppetOverlays.left.upper = document.createElementNS(NS, 'line');
