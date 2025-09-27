@@ -237,6 +237,100 @@
       polyline.setAttribute('points', serialized);
     }
 
+    function computeSimilarityTransform(fromPoints, toPoints) {
+      if (!Array.isArray(fromPoints) || !Array.isArray(toPoints)) return null;
+      const count = Math.min(fromPoints.length, toPoints.length);
+      if (!count) return null;
+      if (count === 1) {
+        const from = fromPoints[0];
+        const to = toPoints[0];
+        if (!from || !to) return null;
+        return {
+          a: 1,
+          b: 0,
+          c: 0,
+          d: 1,
+          e: to.x - from.x,
+          f: to.y - from.y
+        };
+      }
+
+      let sumFx = 0;
+      let sumFy = 0;
+      let sumTx = 0;
+      let sumTy = 0;
+      for (let i = 0; i < count; i += 1) {
+        const from = fromPoints[i];
+        const to = toPoints[i];
+        if (!from || !to) return null;
+        sumFx += from.x;
+        sumFy += from.y;
+        sumTx += to.x;
+        sumTy += to.y;
+      }
+
+      const meanFrom = { x: sumFx / count, y: sumFy / count };
+      const meanTo = { x: sumTx / count, y: sumTy / count };
+
+      let denom = 0;
+      let dot = 0;
+      let cross = 0;
+      for (let i = 0; i < count; i += 1) {
+        const from = fromPoints[i];
+        const to = toPoints[i];
+        const fx = from.x - meanFrom.x;
+        const fy = from.y - meanFrom.y;
+        const tx = to.x - meanTo.x;
+        const ty = to.y - meanTo.y;
+        denom += fx * fx + fy * fy;
+        dot += fx * tx + fy * ty;
+        cross += fx * ty - fy * tx;
+      }
+
+      if (denom < 1e-6) {
+        return {
+          a: 1,
+          b: 0,
+          c: 0,
+          d: 1,
+          e: meanTo.x - meanFrom.x,
+          f: meanTo.y - meanFrom.y
+        };
+      }
+
+      const norm = Math.hypot(dot, cross);
+      if (norm < 1e-6) {
+        return {
+          a: 1,
+          b: 0,
+          c: 0,
+          d: 1,
+          e: meanTo.x - meanFrom.x,
+          f: meanTo.y - meanFrom.y
+        };
+      }
+
+      const scale = norm / denom;
+      const cos = dot / norm;
+      const sin = cross / norm;
+      const a = scale * cos;
+      const b = scale * sin;
+      const c = -scale * sin;
+      const d = scale * cos;
+      const e = meanTo.x - (a * meanFrom.x + c * meanFrom.y);
+      const f = meanTo.y - (b * meanFrom.x + d * meanFrom.y);
+
+      return { a, b, c, d, e, f };
+    }
+
+    function applyFaceTemplateTransform(element, fromPoints, toPoints) {
+      if (!element) return;
+      const matrix = computeSimilarityTransform(fromPoints, toPoints);
+      if (!matrix) return;
+      const { a, b, c, d, e, f } = matrix;
+      element.setAttribute('transform', `matrix(${a} ${b} ${c} ${d} ${e} ${f})`);
+    }
+
     function clampAngle(prev, next) {
       if (prev == null || Number.isNaN(prev)) return next;
       let candidate = next;
@@ -366,8 +460,33 @@
         fill = 'none',
         opacity = 1,
         join = 'round',
-        cap = 'round'
+        cap = 'round',
+        templateId = null
       } = options;
+
+      if (templateId && svgEl) {
+        const template = typeof svgEl.getElementById === 'function'
+          ? svgEl.getElementById(templateId)
+          : svgEl.querySelector(`#${templateId}`);
+        if (!template || !template.parentNode) {
+          console.warn(`Template ${templateId} não encontrado para ${id}`);
+          return null;
+        }
+        const clone = template.cloneNode(true);
+        clone.setAttribute('id', id);
+        clone.removeAttribute('transform');
+        clone.style.pointerEvents = 'none';
+        clone.dataset.faceTemplate = templateId;
+        if (!template.dataset.faceTemplateHidden) {
+          template.dataset.faceTemplateHidden = 'true';
+          template.style.opacity = '0';
+          template.setAttribute('opacity', '0');
+          template.style.pointerEvents = 'none';
+        }
+        template.parentNode.insertBefore(clone, template.nextSibling);
+        return clone;
+      }
+
       const poly = document.createElementNS(NS, 'polyline');
       poly.id = id;
       poly.setAttribute('fill', fill);
@@ -539,8 +658,8 @@
 
     function updateFaceGuides(kp, rig) {
       if (!rig || !segments.face.length) return;
-      for (const guide of segments.face) {
-        const { debug, feature, ids, fallback } = guide;
+      for (const segment of segments.face) {
+        const { debug, feature, ids, fallback, templateId, base } = segment;
         const points = [];
         for (let i = 0; i < ids.length; i += 1) {
           const id = ids[i];
@@ -555,12 +674,21 @@
           }
         }
 
+        let target = null;
         if (points.length === ids.length) {
           placePolyline(debug, points);
-          if (feature) placePolyline(feature, points);
+          target = points;
         } else if (fallback && fallback.length) {
           placePolyline(debug, fallback);
-          if (feature) placePolyline(feature, fallback);
+          target = fallback;
+        }
+
+        if (!feature || !target) continue;
+        if (templateId) {
+          const basis = base || fallback;
+          if (basis) applyFaceTemplateTransform(feature, basis, target);
+        } else if (feature.tagName === 'polyline') {
+          placePolyline(feature, target);
         }
       }
     }
@@ -713,35 +841,34 @@
           {
             id: 'face_brow_right',
             ids: ['rightBrow0', 'rightBrow1', 'rightBrow2', 'rightBrow3', 'rightBrow4'],
-            feature: { id: 'brow_right_feature', stroke: '#2f1a15', width: 18, opacity: 0.95 }
+            feature: { id: 'brow_right_feature', templateId: 'template_brow_right' }
           },
           {
             id: 'face_brow_left',
             ids: ['leftBrow0', 'leftBrow1', 'leftBrow2', 'leftBrow3', 'leftBrow4'],
-            feature: { id: 'brow_left_feature', stroke: '#2f1a15', width: 18, opacity: 0.95 }
+            feature: { id: 'brow_left_feature', templateId: 'template_brow_left' }
           },
           {
             id: 'face_eye_right',
             ids: ['rightEye0', 'rightEye1', 'rightEye2', 'rightEye3', 'rightEye4', 'rightEye5', 'rightEye0'],
             width: 5,
-            feature: { id: 'eye_right_feature', stroke: '#111826', width: 12, opacity: 0.92 }
+            feature: { id: 'eye_right_feature', templateId: 'template_eye_right' }
           },
           {
             id: 'face_eye_left',
             ids: ['leftEye0', 'leftEye1', 'leftEye2', 'leftEye3', 'leftEye4', 'leftEye5', 'leftEye0'],
             width: 5,
-            feature: { id: 'eye_left_feature', stroke: '#111826', width: 12, opacity: 0.92 }
+            feature: { id: 'eye_left_feature', templateId: 'template_eye_left' }
           },
           {
             id: 'face_nose_bridge',
-            ids: ['nose0', 'nose1', 'nose2', 'nose3', 'nose4'],
-            feature: { id: 'nose_bridge_feature', stroke: '#d88479', width: 10, opacity: 0.9 }
+            ids: ['nose0', 'nose1', 'nose2', 'nose3', 'nose4']
           },
           {
             id: 'face_nose_base',
             ids: ['rightNose0', 'rightNose1', 'nose4', 'leftNose1', 'leftNose0'],
             width: 5,
-            feature: { id: 'nose_base_feature', stroke: '#ce6f60', width: 10, opacity: 0.9 }
+            feature: { id: 'nose_feature', templateId: 'template_nose' }
           },
           {
             id: 'face_mouth_outer',
@@ -752,7 +879,7 @@
               'rightMouthCorner'
             ],
             width: 7,
-            feature: { id: 'mouth_outer_feature', stroke: '#c75a4a', width: 14, opacity: 0.95 }
+            feature: { id: 'mouth_feature', templateId: 'template_mouth' }
           },
           {
             id: 'face_mouth_inner',
@@ -760,8 +887,7 @@
               'rightMouthCorner', 'rightUpperLipBottom1', 'upperLipBottomMid', 'leftUpperLipBottom1',
               'leftMouthCorner', 'leftLowerLipTop0', 'lowerLipTopMid', 'rightLowerLipTop0', 'rightMouthCorner'
             ],
-            width: 4,
-            feature: { id: 'mouth_inner_feature', stroke: '#9f3a34', width: 10, opacity: 0.9 }
+            width: 4
           }
         ];
 
@@ -774,11 +900,15 @@
             continue;
           }
           let feature = null;
+          const templateId = guide.feature?.templateId ?? null;
           if (guide.feature) {
             feature = faceFeature(guide.feature.id, guide.feature);
-            placePolyline(feature, fallback);
+            if (feature && !templateId) {
+              placePolyline(feature, fallback);
+            }
           }
-          segments.face.push({ debug, feature, ids: guide.ids, fallback });
+          const base = templateId ? fallback.map((pt) => ({ x: pt.x, y: pt.y })) : null;
+          segments.face.push({ debug, feature, ids: guide.ids, fallback, templateId, base });
         }
 
         puppetOverlays.left.upper = document.createElementNS(NS, 'line');
