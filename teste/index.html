@@ -219,6 +219,12 @@
       line.setAttribute('y2', end.y);
     }
 
+    function placePolyline(polyline, points) {
+      if (!polyline || !Array.isArray(points) || !points.length) return;
+      const serialized = points.map((pt) => `${pt.x},${pt.y}`).join(' ');
+      polyline.setAttribute('points', serialized);
+    }
+
     function placeRigLine(line, from, to, rig) {
       if (!line || !from || !to || !rig) return;
       const A = toRig(from, rig);
@@ -271,7 +277,7 @@
         segments.body.center
       ], showBody);
 
-      toggle(segments.face, showFace);
+      toggle(segments.face.map((guide) => guide.polyline), showFace);
 
       if (puppetOverlay.upper) {
         puppetOverlay.upper.style.display = puppetArmReady ? 'none' : 'block';
@@ -340,15 +346,15 @@
     }
 
     function setPolylinePoints(polyline, pointIds) {
-      if (!polyline || !Array.isArray(pointIds)) return false;
+      if (!polyline || !Array.isArray(pointIds)) return null;
       const pts = [];
       for (const id of pointIds) {
         const pt = readPoint(id);
-        if (!pt) return false;
-        pts.push(`${pt.x},${pt.y}`);
+        if (!pt) return null;
+        pts.push(pt);
       }
-      polyline.setAttribute('points', pts.join(' '));
-      return true;
+      placePolyline(polyline, pts);
+      return pts;
     }
 
     function rotatePuppetSegment(el, origin, target, key) {
@@ -396,6 +402,32 @@
       };
 
       return { A, B: alignedB, C: alignedC };
+    }
+
+    function updateFaceGuides(kp, rig) {
+      if (!rig || !segments.face.length) return;
+      for (const guide of segments.face) {
+        const { polyline, ids, fallback } = guide;
+        const points = [];
+        for (let i = 0; i < ids.length; i += 1) {
+          const id = ids[i];
+          const raw = safeKP(kp, id);
+          if (raw) {
+            points.push(toRig(raw, rig));
+          } else if (fallback && fallback[i]) {
+            points.push(fallback[i]);
+          } else {
+            points.length = 0;
+            break;
+          }
+        }
+
+        if (points.length === ids.length) {
+          placePolyline(polyline, points);
+        } else if (fallback && fallback.length) {
+          placePolyline(polyline, fallback);
+        }
+      }
     }
 
     function tick() {
@@ -474,6 +506,8 @@
         }
       }
 
+      updateFaceGuides(kp, rig);
+
       frameIndex = (frameIndex + 1) % frames.length;
       requestAnimationFrame(tick);
     }
@@ -546,12 +580,13 @@
 
         for (const guide of faceGuides) {
           const poly = faceGuide(guide.id, '#4a8bff', guide.width ?? 6);
-          if (!setPolylinePoints(poly, guide.ids)) {
+          const fallback = setPolylinePoints(poly, guide.ids);
+          if (!fallback) {
             console.warn(`Não foi possível construir a linha de rosto ${guide.id}`);
             poly.remove();
             continue;
           }
-          segments.face.push(poly);
+          segments.face.push({ polyline: poly, ids: guide.ids, fallback });
         }
 
         puppetOverlay.upper = document.createElementNS(NS, 'line');

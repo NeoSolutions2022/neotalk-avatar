@@ -15,3 +15,8 @@
 
 ## Passo 4 – Próximos passos
 - Mapear os pontos faciais do `pose_frames.json` (quando disponíveis) para animar estas mesmas linhas, reutilizando o pipeline de conversão já aplicado ao tronco e braços.
+
+## Passo 5 – Animação dirigida por `pose`
+- Ampliei `convert_pose.py` para exportar os 70 pontos faciais do dump `frame.pose`, mapeando cada índice do array para os IDs já existentes no SVG (mandíbula, sobrancelhas, olhos, nariz e boca).
+- Reprocessei o `frame.pose` gerando um `pose_frames.json` com os novos pontos, preservando o mesmo sistema de coordenadas dos ombros utilizado para escalar o avatar.
+- Ajustei `teste/index.html` para guardar os pontos originais como fallback, converter os keypoints faciais da pose para o espaço do puppet e reescrever as `polyline` azuis a cada quadro sem interferir na visibilidade atual.
