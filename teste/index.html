@@ -134,6 +134,7 @@
     <button type="button" class="debug-toggle" data-toggle-target="leftArm" aria-pressed="true">Braço esquerdo</button>
     <button type="button" class="debug-toggle" data-toggle-target="rightArm" aria-pressed="true">Braço direito</button>
     <button type="button" class="debug-toggle" data-toggle-target="body" aria-pressed="true">Corpo</button>
+    <button type="button" class="debug-toggle" data-toggle-target="face" aria-pressed="true">Rosto</button>
   </section>
   <div id="error" role="alert"></div>
   <script>
@@ -166,7 +167,8 @@
     const debugToggles = {
       leftArm: true,
       rightArm: true,
-      body: true
+      body: true,
+      face: true
     };
 
     const EMA = (prev, cur, a = 0.35) => {
@@ -248,6 +250,7 @@
       const showLeft = showDebug && debugToggles.leftArm;
       const showRight = showDebug && debugToggles.rightArm;
       const showBody = showDebug && debugToggles.body;
+      const showFace = showDebug && debugToggles.face;
 
       if (armPath) armPath.style.display = showLeft ? 'block' : 'none';
 
@@ -268,6 +271,8 @@
         segments.body.center
       ], showBody);
 
+      toggle(segments.face, showFace);
+
       if (puppetOverlay.upper) {
         puppetOverlay.upper.style.display = puppetArmReady ? 'none' : 'block';
       }
@@ -284,7 +289,8 @@
     const segments = {
       left: { upper: null, lower: null },
       right: { upper: null, lower: null },
-      body: { top: null, bottom: null, left: null, right: null, center: null }
+      body: { top: null, bottom: null, left: null, right: null, center: null },
+      face: []
     };
     let armPath = null;
     let running = false;
@@ -305,6 +311,44 @@
       line.classList.add('joint');
       svgEl.appendChild(line);
       return line;
+    }
+
+    function faceGuide(id, stroke = '#4a8bff', width = 6) {
+      const poly = document.createElementNS(NS, 'polyline');
+      poly.id = id;
+      poly.setAttribute('fill', 'none');
+      poly.setAttribute('stroke', stroke);
+      poly.setAttribute('stroke-width', width);
+      poly.setAttribute('stroke-linecap', 'round');
+      poly.setAttribute('stroke-linejoin', 'round');
+      poly.classList.add('joint');
+      svgEl.appendChild(poly);
+      return poly;
+    }
+
+    function readPoint(id) {
+      if (!svgEl) return null;
+      const el = svgEl.getElementById(id);
+      if (!el) return null;
+      const cx = el.getAttribute('cx') ?? el.getAttribute('x') ?? el.getAttribute('x1');
+      const cy = el.getAttribute('cy') ?? el.getAttribute('y') ?? el.getAttribute('y1');
+      if (cx == null || cy == null) return null;
+      const x = parseFloat(cx);
+      const y = parseFloat(cy);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+      return { x, y };
+    }
+
+    function setPolylinePoints(polyline, pointIds) {
+      if (!polyline || !Array.isArray(pointIds)) return false;
+      const pts = [];
+      for (const id of pointIds) {
+        const pt = readPoint(id);
+        if (!pt) return false;
+        pts.push(`${pt.x},${pt.y}`);
+      }
+      polyline.setAttribute('points', pts.join(' '));
+      return true;
     }
 
     function rotatePuppetSegment(el, origin, target, key) {
@@ -474,6 +518,41 @@
         segments.body.left = seg('body_left', '#4a8bff', 12);
         segments.body.right = seg('body_right', '#4a8bff', 12);
         segments.body.center = seg('body_center', '#4a8bff', 10);
+
+        const faceGuides = [
+          { id: 'face_contour', ids: [
+            'topMid', 'rightTop0', 'rightTop1', 'rightJaw0', 'rightJaw1', 'rightJaw2',
+            'rightJaw3', 'rightJaw4', 'rightJaw5', 'rightJaw6', 'rightJaw7', 'jawMid',
+            'leftJaw7', 'leftJaw6', 'leftJaw5', 'leftJaw4', 'leftJaw3', 'leftJaw2',
+            'leftJaw1', 'leftJaw0', 'leftTop1', 'leftTop0', 'topMid'
+          ], width: 8 },
+          { id: 'face_brow_right', ids: ['rightBrow0', 'rightBrow1', 'rightBrow2', 'rightBrow3', 'rightBrow4'] },
+          { id: 'face_brow_left', ids: ['leftBrow0', 'leftBrow1', 'leftBrow2', 'leftBrow3', 'leftBrow4'] },
+          { id: 'face_eye_right', ids: ['rightEye0', 'rightEye1', 'rightEye2', 'rightEye3', 'rightEye4', 'rightEye5', 'rightEye0'], width: 5 },
+          { id: 'face_eye_left', ids: ['leftEye0', 'leftEye1', 'leftEye2', 'leftEye3', 'leftEye4', 'leftEye5', 'leftEye0'], width: 5 },
+          { id: 'face_nose_bridge', ids: ['nose0', 'nose1', 'nose2', 'nose3', 'nose4'] },
+          { id: 'face_nose_base', ids: ['rightNose0', 'rightNose1', 'nose4', 'leftNose1', 'leftNose0'], width: 5 },
+          { id: 'face_mouth_outer', ids: [
+            'rightMouthCorner', 'rightUpperLipTop0', 'rightUpperLipTop1', 'upperLipTopMid',
+            'leftUpperLipTop1', 'leftUpperLipTop0', 'leftMouthCorner', 'leftLowerLipBottom0',
+            'leftLowerLipBottom1', 'lowerLipBottomMid', 'rightLowerLipBottom1', 'rightLowerLipBottom0',
+            'rightMouthCorner'
+          ], width: 7 },
+          { id: 'face_mouth_inner', ids: [
+            'rightMouthCorner', 'rightUpperLipBottom1', 'upperLipBottomMid', 'leftUpperLipBottom1',
+            'leftMouthCorner', 'leftLowerLipTop0', 'lowerLipTopMid', 'rightLowerLipTop0', 'rightMouthCorner'
+          ], width: 4 }
+        ];
+
+        for (const guide of faceGuides) {
+          const poly = faceGuide(guide.id, '#4a8bff', guide.width ?? 6);
+          if (!setPolylinePoints(poly, guide.ids)) {
+            console.warn(`Não foi possível construir a linha de rosto ${guide.id}`);
+            poly.remove();
+            continue;
+          }
+          segments.face.push(poly);
+        }
 
         puppetOverlay.upper = document.createElementNS(NS, 'line');
         puppetOverlay.upper.id = 'leftArmUpperOverlay';
