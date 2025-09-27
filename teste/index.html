@@ -1063,9 +1063,6 @@
       });
       const torsoRig = computeTorsoRig(LSh, RSh, LH, RH, rig);
 
-      const leftDebugActive = debugToggles.leftArm;
-      const rightDebugActive = debugToggles.rightArm;
-
       if (leftArmRig) {
         const { A, B, C } = leftArmRig;
         if (armPaths.left) {
@@ -1073,7 +1070,7 @@
         }
         placeLine(segments.left.upper, A, B);
         placeLine(segments.left.lower, B, C);
-        if (!leftDebugActive && puppetArms.left.ready) {
+        if (puppetArms.left.ready) {
           rotatePuppetSegment(puppetArms.left.upper, A, B, 'left', 'upper');
           rotatePuppetSegment(puppetArms.left.lower, B, C, 'left', 'lower');
         }
@@ -1086,7 +1083,7 @@
         }
         placeLine(segments.right.upper, A, B);
         placeLine(segments.right.lower, B, C);
-        if (!rightDebugActive && puppetArms.right.ready) {
+        if (puppetArms.right.ready) {
           rotatePuppetSegment(puppetArms.right.upper, A, B, 'right', 'upper');
           rotatePuppetSegment(puppetArms.right.lower, B, C, 'right', 'lower');
         }
