@@ -148,6 +148,7 @@
     };
 
     const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
     const angle = (a, b) => Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
 
     const PUPPET_LEFT_SH = { x: 605.7, y: 294.3 };
@@ -191,8 +192,6 @@
         y: prev.y + a * (cur.y - prev.y)
       };
     };
-
-    const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 
     function safeKP(kp, name) {
       const prev = smooth[name] ?? null;
