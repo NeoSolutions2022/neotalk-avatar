@@ -97,21 +97,6 @@
       errorBox.style.display = 'block';
     };
 
-    const EMA = (prev, cur, a = 0.35) => (prev == null ? cur : {
-      x: prev.x + a * (cur.x - prev.x),
-      y: prev.y + a * (cur.y - prev.y)
-    });
-
-    let smooth = {};
-    function safeKP(kp, name) {
-      const prev = smooth[name] ?? null;
-      const raw = kp[name] ?? prev;
-      if (!raw) return null;
-      const next = EMA(prev, raw);
-      smooth[name] = next;
-      return next;
-    }
-
     const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
     const angle = (a, b) => Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
 
@@ -123,41 +108,52 @@
       y: PUPPET_LEFT_SH.y
     };
 
-    function rigFromPose(kp) {
-      const LSh = safeKP(kp, 'leftShoulder');
-      const RSh = safeKP(kp, 'rightShoulder');
-      const LH = safeKP(kp, 'leftHip');
-      const RH = safeKP(kp, 'rightHip');
-      if (!LSh || !RSh || !LH || !RH) return null;
-      const poseSpan = dist(LSh, RSh);
-      if (!poseSpan) return null;
-      const scale = PUPPET_SHOULDER_SPAN / poseSpan;
+    const DEBUG = new URLSearchParams(window.location.search).get('debug') !== '0';
+    const smoothState = {};
+
+    function smoothFrame(kp, names) {
+      const EMA = (prev, cur, a = 0.35) => (prev == null ? cur : {
+        x: prev.x + a * (cur.x - prev.x),
+        y: prev.y + a * (cur.y - prev.y)
+      });
+      const out = {};
+      for (const n of names) {
+        const prev = smoothState[n] ?? null;
+        const raw = kp[n] ?? prev;
+        out[n] = raw ? EMA(prev, raw) : prev;
+      }
+      Object.assign(smoothState, out);
+      return out;
+    }
+
+    function rigFromPose(S) {
+      const LSh = S.leftShoulder;
+      const RSh = S.rightShoulder;
+      if (!LSh || !RSh) return null;
+      const span = Math.hypot(LSh.x - RSh.x, LSh.y - RSh.y);
+      if (!span) return null;
+      const origin = {
+        x: (LSh.x + RSh.x) / 2,
+        y: (LSh.y + RSh.y) / 2
+      };
       return {
-        scale,
-        origin: { x: (LSh.x + RSh.x) / 2, y: (LSh.y + RSh.y) / 2 },
-        offset: PUPPET_SHOULDERS_MID,
-        rot: 0
+        scale: PUPPET_SHOULDER_SPAN / span,
+        origin,
+        offset: PUPPET_SHOULDERS_MID
       };
     }
 
-    function toRig(p, rig) {
-      const x0 = p.x - rig.origin.x;
-      const y0 = p.y - rig.origin.y;
-      return {
-        x: rig.offset.x + x0 * rig.scale,
-        y: rig.offset.y + y0 * rig.scale
-      };
-    }
+    const toRig = (p, rig) => ({
+      x: rig.offset.x + (p.x - rig.origin.x) * rig.scale,
+      y: rig.offset.y + (p.y - rig.origin.y) * rig.scale
+    });
 
-    function placeSegment(rect, a, b, rig) {
-      if (!rect || !a || !b) return;
-      const A = toRig(a, rig);
-      const B = toRig(b, rig);
-      const len = dist(A, B);
-      const ang = angle(A, B);
-      rect.classList.add('joint');
-      rect.setAttribute('x', A.x - 9);
-      rect.setAttribute('y', A.y);
+    function drawSegment(rect, start, end) {
+      if (!rect || !start || !end) return;
+      const len = dist(start, end);
+      const ang = angle(start, end);
+      rect.setAttribute('x', start.x - 9);
+      rect.setAttribute('y', start.y);
       rect.setAttribute('width', 18);
       rect.setAttribute('height', len);
       rect.setAttribute('rx', 10);
@@ -165,11 +161,18 @@
       rect.style.transform = `rotate(${ang}deg)`;
     }
 
+    function toggleDebugVisibility() {
+      if (armPath) armPath.style.display = DEBUG ? 'block' : 'none';
+      if (L_upper) L_upper.style.display = DEBUG ? 'none' : 'block';
+      if (L_lower) L_lower.style.display = DEBUG ? 'none' : 'block';
+    }
+
     let frames = [];
     let frameIndex = 0;
     let svgEl = null;
     let L_upper = null;
     let L_lower = null;
+    let armPath = null;
     let running = false;
 
     function seg(id) {
@@ -194,13 +197,28 @@
         return;
       }
 
-      const rig = rigFromPose(kp);
+      const need = ['leftShoulder', 'rightShoulder', 'leftHip', 'rightHip', 'leftElbow', 'leftWrist'];
+      const S = smoothFrame(kp, need);
+      if (!S.leftShoulder || !S.rightShoulder || !S.leftHip || !S.rightHip || !S.leftElbow || !S.leftWrist) {
+        frameIndex = (frameIndex + 1) % frames.length;
+        requestAnimationFrame(tick);
+        return;
+      }
+
+      const rig = rigFromPose(S);
       if (rig) {
-        const LSh = safeKP(kp, 'leftShoulder');
-        const LE = safeKP(kp, 'leftElbow');
-        const LW = safeKP(kp, 'leftWrist');
-        if (LSh && LE) placeSegment(L_upper, LSh, LE, rig);
-        if (LE && LW) placeSegment(L_lower, LE, LW, rig);
+        const A = toRig(S.leftShoulder, rig);
+        const B = toRig(S.leftElbow, rig);
+        const C = toRig(S.leftWrist, rig);
+
+        if (armPath) {
+          armPath.setAttribute('d', `M ${A.x} ${A.y} L ${B.x} ${B.y} L ${C.x} ${C.y}`);
+        }
+
+        if (!DEBUG) {
+          drawSegment(L_upper, A, B);
+          drawSegment(L_lower, B, C);
+        }
       }
 
       frameIndex = (frameIndex + 1) % frames.length;
@@ -230,8 +248,17 @@
         svgEl.style.height = 'auto';
         const skel = svgEl.getElementById('skeleton_1_');
         if (skel) skel.style.display = 'none';
+        armPath = document.createElementNS(NS, 'path');
+        armPath.id = 'L_arm_path';
+        armPath.setAttribute('fill', 'none');
+        armPath.setAttribute('stroke', '#4a8bff');
+        armPath.setAttribute('stroke-width', '18');
+        armPath.setAttribute('stroke-linecap', 'round');
+        armPath.setAttribute('stroke-linejoin', 'round');
+        svgEl.appendChild(armPath);
         L_upper = seg('L_upper');
         L_lower = seg('L_lower');
+        toggleDebugVisibility();
         tryStart();
       })
       .catch((err) => {
