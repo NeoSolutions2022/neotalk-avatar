@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>NeoTalk – Pose → Avatar (PoC)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { margin: 0; overflow: hidden; background: #0d1117; color: #d0d8e0; font-family: sans-serif; }
+    header { position: fixed; top: 0; left: 0; right: 0; padding: 8px; background: #0008; display: flex; gap: 8px; align-items: center; z-index: 10; }
+    #info { position: fixed; right: 0; top: 0; max-width: 260px; background: #0009; padding: 8px; border-left: 2px solid #04c2ff; font-size: 12px; max-height: 100%; overflow: auto; }
+    canvas { display: block; }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.161/build/three.module.js",
+        "three/examples/": "https://unpkg.com/three@0.161/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <header>
+    <label>Avatar FBX <input type="file" id="fbxInput" accept=".fbx" /></label>
+    <label>Poses <input type="file" id="poseInput" accept=".json,.pose" /></label>
+    <button id="playBtn">Play</button>
+    <button id="stepBtn">Step</button>
+    <label>Escala <input type="number" id="gain" value="20" step="1" style="width:60px" /></label>
+  </header>
+  <div id="info">(nenhum osso)</div>
+  <script type="module" src="main.js"></script>
+</body>
+</html>

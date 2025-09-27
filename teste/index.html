@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <title>Avatar por pose</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at 25% 25%, #ffffff 0, #f6f8fc 45%, #e6ecfb 100%);
+      color: #1f2a44;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      margin: 0;
+    }
+
+    #info {
+      font-size: 0.95rem;
+      opacity: 0.75;
+    }
+
+    main {
+      width: min(560px, 92vw);
+      position: relative;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    #stage {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.6);
+      border-radius: 16px;
+      box-shadow: 0 12px 32px rgba(30, 70, 140, 0.12);
+      padding: clamp(12px, 3vw, 28px);
+    }
+
+    #stage svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .joint {
+      transform-box: fill-box;
+      transform-origin: center;
+      transition: transform 60ms linear;
+    }
+
+    #L_upper,
+    #L_lower,
+    #R_upper,
+    #R_lower {
+      filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.15));
+    }
+
+    #error {
+      position: fixed;
+      bottom: 1.2rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(220, 53, 69, 0.92);
+      color: #fff;
+      padding: 0.8rem 1.2rem;
+      border-radius: 12px;
+      box-shadow: 0 6px 20px rgba(220, 53, 69, 0.4);
+      display: none;
+      max-width: min(480px, 90vw);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <h1>Avatar 2D animado por <code>.pose</code></h1>
+  <div id="info">Animando a partir de <code>pose_frames.json</code></div>
+  <main>
+    <div id="stage" aria-live="polite"></div>
+  </main>
+  <div id="error" role="alert"></div>
+  <script>
+    const stage = document.getElementById('stage');
+    const errorBox = document.getElementById('error');
+    const NS = 'http://www.w3.org/2000/svg';
+
+    const showError = (msg) => {
+      errorBox.textContent = msg;
+      errorBox.style.display = 'block';
+    };
+
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    const angle = (a, b) => Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+
+    const PUPPET_LEFT_SH = { x: 605.7, y: 294.3 };
+    const PUPPET_RIGHT_SH = { x: 392.8, y: 294.3 };
+    const PUPPET_SHOULDER_SPAN = PUPPET_LEFT_SH.x - PUPPET_RIGHT_SH.x;
+    const PUPPET_SHOULDERS_MID = {
+      x: (PUPPET_LEFT_SH.x + PUPPET_RIGHT_SH.x) / 2,
+      y: PUPPET_LEFT_SH.y
+    };
+
+    const DEBUG_ARM = new URLSearchParams(window.location.search).get('debugArm') !== '0';
+    const smooth = {};
+
+    const EMA = (prev, cur, a = 0.35) => {
+      if (!prev) return cur;
+      return {
+        x: prev.x + a * (cur.x - prev.x),
+        y: prev.y + a * (cur.y - prev.y)
+      };
+    };
+
+    const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
+    function safeKP(kp, name) {
+      const prev = smooth[name] ?? null;
+      const raw = kp?.[name] ?? null;
+      let next = null;
+      if (raw && prev) next = EMA(prev, raw);
+      else next = raw || prev || null;
+      smooth[name] = next;
+      return next;
+    }
+
+    function rigFromPose(kp) {
+      const LSh = safeKP(kp, 'leftShoulder');
+      const RSh = safeKP(kp, 'rightShoulder');
+      const LH = safeKP(kp, 'leftHip');
+      const RH = safeKP(kp, 'rightHip');
+      if (!LSh || !RSh || !LH || !RH) return null;
+      const poseSpan = dist(LSh, RSh);
+      if (!poseSpan) return null;
+      return {
+        scale: PUPPET_SHOULDER_SPAN / poseSpan,
+        origin: mid(LSh, RSh),
+        offset: PUPPET_SHOULDERS_MID
+      };
+    }
+
+    const toRig = (p, rig) => ({
+      x: rig.offset.x + (p.x - rig.origin.x) * rig.scale,
+      y: rig.offset.y + (p.y - rig.origin.y) * rig.scale
+    });
+
+    function placeSegment(rect, from, to, rig) {
+      if (!rect || !from || !to || !rig) return;
+      const A = toRig(from, rig);
+      const B = toRig(to, rig);
+      const len = dist(A, B);
+      const ang = angle(A, B);
+      rect.setAttribute('x', A.x - 9);
+      rect.setAttribute('y', A.y);
+      rect.setAttribute('width', 18);
+      rect.setAttribute('height', len);
+      rect.setAttribute('rx', 10);
+      rect.style.transformOrigin = '9px 0px';
+      rect.style.transform = `rotate(${ang}deg)`;
+    }
+
+    function placeRigSegment(rect, start, end) {
+      if (!rect || !start || !end) return;
+      const len = dist(start, end);
+      const ang = angle(start, end);
+      rect.setAttribute('x', start.x - 9);
+      rect.setAttribute('y', start.y);
+      rect.setAttribute('width', 18);
+      rect.setAttribute('height', len);
+      rect.setAttribute('rx', 10);
+      rect.style.transformOrigin = '9px 0px';
+      rect.style.transform = `rotate(${ang}deg)`;
+    }
+
+    function clampAngle(prev, next) {
+      if (prev == null || Number.isNaN(prev)) return next;
+      let candidate = next;
+      let delta = candidate - prev;
+      while (delta > 180) {
+        candidate -= 360;
+        delta = candidate - prev;
+      }
+      while (delta < -180) {
+        candidate += 360;
+        delta = candidate - prev;
+      }
+      return candidate;
+    }
+
+    function isDebugActive() {
+      return DEBUG_ARM || !puppetArmReady;
+    }
+
+    function updateVisibility() {
+      const showDebug = isDebugActive();
+      if (armPath) armPath.style.display = showDebug ? 'block' : 'none';
+      for (const rect of Object.values(segments)) {
+        if (!rect) continue;
+        rect.style.display = showDebug ? 'block' : 'none';
+      }
+      if (upperArmEl) upperArmEl.style.display = showDebug ? 'none' : '';
+      if (lowerArmEl) lowerArmEl.style.display = showDebug ? 'none' : '';
+    }
+
+    let frames = [];
+    let frameIndex = 0;
+    let svgEl = null;
+    const segments = {};
+    let armPath = null;
+    let running = false;
+    let upperArmEl = null;
+    let lowerArmEl = null;
+    let puppetArmReady = false;
+    let puppetWarningShown = false;
+    let lastArmRig = null;
+    const lastArmAngles = { upper: null, lower: null };
+
+    function seg(id) {
+      const r = document.createElementNS(NS, 'rect');
+      r.id = id;
+      r.setAttribute('width', '18');
+      r.setAttribute('height', '120');
+      r.setAttribute('rx', '10');
+      r.setAttribute('fill', '#4a8bff');
+      r.classList.add('joint');
+      svgEl.appendChild(r);
+      return r;
+    }
+
+    function rotatePuppetSegment(el, origin, target, key) {
+      if (!el || !origin || !target) return;
+      const ang = clampAngle(lastArmAngles[key], angle(origin, target));
+      lastArmAngles[key] = ang;
+      el.style.transformOrigin = `${origin.x}px ${origin.y}px`;
+      el.style.transform = `rotate(${ang}deg)`;
+    }
+
+    function tick() {
+      if (!frames.length) return;
+      const frame = frames[frameIndex];
+      const kp = frame?.keypoints;
+      if (!kp) {
+        frameIndex = (frameIndex + 1) % frames.length;
+        requestAnimationFrame(tick);
+        return;
+      }
+
+      const rig = rigFromPose(kp);
+      if (!rig) {
+        frameIndex = (frameIndex + 1) % frames.length;
+        requestAnimationFrame(tick);
+        return;
+      }
+
+      const LSh = safeKP(kp, 'leftShoulder');
+      const LE = safeKP(kp, 'leftElbow');
+      const LW = safeKP(kp, 'leftWrist');
+      const RSh = safeKP(kp, 'rightShoulder');
+      const RE = safeKP(kp, 'rightElbow');
+      const RW = safeKP(kp, 'rightWrist');
+
+      let currentArmRig = null;
+      if (LSh && LE && LW) {
+        const A = toRig(LSh, rig);
+        const B = toRig(LE, rig);
+        const C = toRig(LW, rig);
+        currentArmRig = { A, B, C };
+        lastArmRig = currentArmRig;
+      } else if (lastArmRig) {
+        currentArmRig = lastArmRig;
+      }
+
+      if (currentArmRig && armPath) {
+        const { A, B, C } = currentArmRig;
+        armPath.setAttribute('d', `M ${A.x} ${A.y} L ${B.x} ${B.y} L ${C.x} ${C.y}`);
+      }
+
+      const showDebug = isDebugActive();
+
+      if (currentArmRig && showDebug) {
+        const { A, B, C } = currentArmRig;
+        placeRigSegment(segments.L_upper, A, B);
+        placeRigSegment(segments.L_lower, B, C);
+      }
+
+      if (currentArmRig && !showDebug && puppetArmReady) {
+        const { A, B, C } = currentArmRig;
+        rotatePuppetSegment(upperArmEl, A, B, 'upper');
+        rotatePuppetSegment(lowerArmEl, B, C, 'lower');
+      }
+
+      if (showDebug) {
+        placeSegment(segments.R_upper, RSh, RE, rig);
+        placeSegment(segments.R_lower, RE, RW, rig);
+      }
+
+      frameIndex = (frameIndex + 1) % frames.length;
+      requestAnimationFrame(tick);
+    }
+
+    function tryStart() {
+      if (!running && svgEl && frames.length) {
+        running = true;
+        requestAnimationFrame(tick);
+      }
+    }
+
+    fetch('../boy.svg')
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status} ao carregar boy.svg`);
+        return res.text();
+      })
+      .then((svgMarkup) => {
+        stage.innerHTML = svgMarkup;
+        svgEl = stage.querySelector('svg');
+        if (!svgEl) throw new Error('boy.svg não possui elemento <svg>');
+        svgEl.removeAttribute('width');
+        svgEl.removeAttribute('height');
+        svgEl.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+        svgEl.style.width = '100%';
+        svgEl.style.height = 'auto';
+        const skel = svgEl.getElementById('skeleton_1_');
+        if (skel) skel.style.display = 'none';
+        armPath = document.createElementNS(NS, 'path');
+        armPath.id = 'L_arm_path';
+        armPath.setAttribute('fill', 'none');
+        armPath.setAttribute('stroke', '#4a8bff');
+        armPath.setAttribute('stroke-width', '18');
+        armPath.setAttribute('stroke-linecap', 'round');
+        armPath.setAttribute('stroke-linejoin', 'round');
+        svgEl.appendChild(armPath);
+        segments.L_upper = seg('L_upper');
+        segments.L_lower = seg('L_lower');
+        segments.R_upper = seg('R_upper');
+        segments.R_lower = seg('R_lower');
+
+        const upperCandidates = [
+          'leftUpperArm',
+          'LeftUpperArm',
+          'left_upper_arm',
+          'Left_arm_upper',
+          'leftArmUpper',
+          'leftupperarm',
+          'leftArm_Upper'
+        ];
+        const lowerCandidates = [
+          'leftLowerArm',
+          'LeftLowerArm',
+          'left_lower_arm',
+          'Left_arm_lower',
+          'leftArmLower',
+          'leftlowerarm',
+          'leftArm_Lower'
+        ];
+
+        const findArmPart = (candidates) => {
+          for (const id of candidates) {
+            const el = svgEl.getElementById(id);
+            if (el) return el;
+          }
+          return null;
+        };
+
+        upperArmEl = findArmPart(upperCandidates);
+        lowerArmEl = findArmPart(lowerCandidates);
+        puppetArmReady = Boolean(upperArmEl && lowerArmEl);
+
+        if (!puppetArmReady && !puppetWarningShown) {
+          console.warn('Braço esquerdo do puppet não encontrado em boy.svg; mantendo modo debug.');
+          puppetWarningShown = true;
+        }
+
+        if (upperArmEl) {
+          upperArmEl.style.transformBox = 'fill-box';
+          upperArmEl.classList.add('joint');
+        }
+        if (lowerArmEl) {
+          lowerArmEl.style.transformBox = 'fill-box';
+          lowerArmEl.classList.add('joint');
+        }
+
+        if (upperArmEl && upperArmEl.parentNode) {
+          upperArmEl.parentNode.appendChild(upperArmEl);
+        }
+        if (lowerArmEl && lowerArmEl.parentNode) {
+          lowerArmEl.parentNode.appendChild(lowerArmEl);
+        }
+
+        updateVisibility();
+        tryStart();
+      })
+      .catch((err) => {
+        console.error(err);
+        showError('Erro ao carregar boy.svg: ' + err.message);
+      });
+
+    fetch('pose_frames.json')
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status} ao carregar pose_frames.json`);
+        return res.json();
+      })
+      .then((data) => {
+        if (!Array.isArray(data) || !data.length) {
+          throw new Error('Arquivo pose_frames.json vazio ou inválido.');
+        }
+        frames = data;
+        tryStart();
+      })
+      .catch((err) => {
+        console.error(err);
+        showError('Erro ao carregar pose_frames.json: ' + err.message);
+      });
+  </script>
+</body>
+</html>
