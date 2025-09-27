@@ -60,7 +60,9 @@
     }
 
     #L_upper,
-    #L_lower {
+    #L_lower,
+    #R_upper,
+    #R_lower {
       filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.15));
     }
 
@@ -109,36 +111,39 @@
     };
 
     const DEBUG = new URLSearchParams(window.location.search).get('debug') !== '0';
-    const smoothState = {};
+    const smooth = {};
 
-    function smoothFrame(kp, names) {
-      const EMA = (prev, cur, a = 0.35) => (prev == null ? cur : {
+    const EMA = (prev, cur, a = 0.35) => {
+      if (!prev) return cur;
+      return {
         x: prev.x + a * (cur.x - prev.x),
         y: prev.y + a * (cur.y - prev.y)
-      });
-      const out = {};
-      for (const n of names) {
-        const prev = smoothState[n] ?? null;
-        const raw = kp[n] ?? prev;
-        out[n] = raw ? EMA(prev, raw) : prev;
-      }
-      Object.assign(smoothState, out);
-      return out;
+      };
+    };
+
+    const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
+    function safeKP(kp, name) {
+      const prev = smooth[name] ?? null;
+      const raw = kp?.[name] ?? null;
+      let next = null;
+      if (raw && prev) next = EMA(prev, raw);
+      else next = raw || prev || null;
+      smooth[name] = next;
+      return next;
     }
 
-    function rigFromPose(S) {
-      const LSh = S.leftShoulder;
-      const RSh = S.rightShoulder;
-      if (!LSh || !RSh) return null;
-      const span = Math.hypot(LSh.x - RSh.x, LSh.y - RSh.y);
-      if (!span) return null;
-      const origin = {
-        x: (LSh.x + RSh.x) / 2,
-        y: (LSh.y + RSh.y) / 2
-      };
+    function rigFromPose(kp) {
+      const LSh = safeKP(kp, 'leftShoulder');
+      const RSh = safeKP(kp, 'rightShoulder');
+      const LH = safeKP(kp, 'leftHip');
+      const RH = safeKP(kp, 'rightHip');
+      if (!LSh || !RSh || !LH || !RH) return null;
+      const poseSpan = dist(LSh, RSh);
+      if (!poseSpan) return null;
       return {
-        scale: PUPPET_SHOULDER_SPAN / span,
-        origin,
+        scale: PUPPET_SHOULDER_SPAN / poseSpan,
+        origin: mid(LSh, RSh),
         offset: PUPPET_SHOULDERS_MID
       };
     }
@@ -148,12 +153,14 @@
       y: rig.offset.y + (p.y - rig.origin.y) * rig.scale
     });
 
-    function drawSegment(rect, start, end) {
-      if (!rect || !start || !end) return;
-      const len = dist(start, end);
-      const ang = angle(start, end);
-      rect.setAttribute('x', start.x - 9);
-      rect.setAttribute('y', start.y);
+    function placeSegment(rect, from, to, rig) {
+      if (!rect || !from || !to || !rig) return;
+      const A = toRig(from, rig);
+      const B = toRig(to, rig);
+      const len = dist(A, B);
+      const ang = angle(A, B);
+      rect.setAttribute('x', A.x - 9);
+      rect.setAttribute('y', A.y);
       rect.setAttribute('width', 18);
       rect.setAttribute('height', len);
       rect.setAttribute('rx', 10);
@@ -163,15 +170,15 @@
 
     function toggleDebugVisibility() {
       if (armPath) armPath.style.display = DEBUG ? 'block' : 'none';
-      if (L_upper) L_upper.style.display = DEBUG ? 'none' : 'block';
-      if (L_lower) L_lower.style.display = DEBUG ? 'none' : 'block';
+      for (const rect of Object.values(segments)) {
+        rect.style.display = DEBUG ? 'none' : 'block';
+      }
     }
 
     let frames = [];
     let frameIndex = 0;
     let svgEl = null;
-    let L_upper = null;
-    let L_lower = null;
+    const segments = {};
     let armPath = null;
     let running = false;
 
@@ -197,28 +204,32 @@
         return;
       }
 
-      const need = ['leftShoulder', 'rightShoulder', 'leftHip', 'rightHip', 'leftElbow', 'leftWrist'];
-      const S = smoothFrame(kp, need);
-      if (!S.leftShoulder || !S.rightShoulder || !S.leftHip || !S.rightHip || !S.leftElbow || !S.leftWrist) {
+      const rig = rigFromPose(kp);
+      if (!rig) {
         frameIndex = (frameIndex + 1) % frames.length;
         requestAnimationFrame(tick);
         return;
       }
 
-      const rig = rigFromPose(S);
-      if (rig) {
-        const A = toRig(S.leftShoulder, rig);
-        const B = toRig(S.leftElbow, rig);
-        const C = toRig(S.leftWrist, rig);
+      const LSh = safeKP(kp, 'leftShoulder');
+      const LE = safeKP(kp, 'leftElbow');
+      const LW = safeKP(kp, 'leftWrist');
+      const RSh = safeKP(kp, 'rightShoulder');
+      const RE = safeKP(kp, 'rightElbow');
+      const RW = safeKP(kp, 'rightWrist');
 
-        if (armPath) {
-          armPath.setAttribute('d', `M ${A.x} ${A.y} L ${B.x} ${B.y} L ${C.x} ${C.y}`);
-        }
+      if (armPath && LSh && LE && LW) {
+        const A = toRig(LSh, rig);
+        const B = toRig(LE, rig);
+        const C = toRig(LW, rig);
+        armPath.setAttribute('d', `M ${A.x} ${A.y} L ${B.x} ${B.y} L ${C.x} ${C.y}`);
+      }
 
-        if (!DEBUG) {
-          drawSegment(L_upper, A, B);
-          drawSegment(L_lower, B, C);
-        }
+      if (!DEBUG) {
+        placeSegment(segments.L_upper, LSh, LE, rig);
+        placeSegment(segments.L_lower, LE, LW, rig);
+        placeSegment(segments.R_upper, RSh, RE, rig);
+        placeSegment(segments.R_lower, RE, RW, rig);
       }
 
       frameIndex = (frameIndex + 1) % frames.length;
@@ -256,8 +267,10 @@
         armPath.setAttribute('stroke-linecap', 'round');
         armPath.setAttribute('stroke-linejoin', 'round');
         svgEl.appendChild(armPath);
-        L_upper = seg('L_upper');
-        L_lower = seg('L_lower');
+        segments.L_upper = seg('L_upper');
+        segments.L_lower = seg('L_lower');
+        segments.R_upper = seg('R_upper');
+        segments.R_lower = seg('R_lower');
         toggleDebugVisibility();
         tryStart();
       })
