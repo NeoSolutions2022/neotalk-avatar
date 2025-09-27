@@ -154,6 +154,8 @@
     const PUPPET_RIGHT_SH = { x: 392.8, y: 294.3 };
     const PUPPET_LEFT_EL = { x: 710.1, y: 294.0 };
     const PUPPET_LEFT_WR = { x: 873.5, y: 300.3 };
+    const PUPPET_RIGHT_EL = { x: 289.3, y: 294.4 };
+    const PUPPET_RIGHT_WR = { x: 125.9, y: 300.8 };
     const PUPPET_SHOULDER_SPAN = PUPPET_LEFT_SH.x - PUPPET_RIGHT_SH.x;
     const PUPPET_SHOULDERS_MID = {
       x: (PUPPET_LEFT_SH.x + PUPPET_RIGHT_SH.x) / 2,
@@ -161,6 +163,17 @@
     };
     const PUPPET_UPPER_ARM_LEN = dist(PUPPET_LEFT_SH, PUPPET_LEFT_EL);
     const PUPPET_LOWER_ARM_LEN = dist(PUPPET_LEFT_EL, PUPPET_LEFT_WR);
+    const PUPPET_RIGHT_UPPER_ARM_LEN = dist(PUPPET_RIGHT_SH, PUPPET_RIGHT_EL);
+    const PUPPET_RIGHT_LOWER_ARM_LEN = dist(PUPPET_RIGHT_EL, PUPPET_RIGHT_WR);
+    const PUPPET_LEFT_HIP = { x: 559.5, y: 509.3 };
+    const PUPPET_RIGHT_HIP = { x: 443.1, y: 510.1 };
+    const PUPPET_HIP_SPAN = dist(PUPPET_LEFT_HIP, PUPPET_RIGHT_HIP);
+    const PUPPET_TORSO_CENTER_LEN = dist(
+      PUPPET_SHOULDERS_MID,
+      mid(PUPPET_LEFT_HIP, PUPPET_RIGHT_HIP)
+    );
+    const PUPPET_LEFT_TORSO_LEN = dist(PUPPET_LEFT_SH, PUPPET_LEFT_HIP);
+    const PUPPET_RIGHT_TORSO_LEN = dist(PUPPET_RIGHT_SH, PUPPET_RIGHT_HIP);
 
     const DEBUG_ARM = new URLSearchParams(window.location.search).get('debugArm') !== '0';
     const smooth = {};
@@ -225,13 +238,6 @@
       polyline.setAttribute('points', serialized);
     }
 
-    function placeRigLine(line, from, to, rig) {
-      if (!line || !from || !to || !rig) return;
-      const A = toRig(from, rig);
-      const B = toRig(to, rig);
-      placeLine(line, A, B);
-    }
-
     function clampAngle(prev, next) {
       if (prev == null || Number.isNaN(prev)) return next;
       let candidate = next;
@@ -247,18 +253,26 @@
       return candidate;
     }
 
-    function isDebugActive() {
-      return DEBUG_ARM || !puppetArmReady;
+    function isDebugActive(side) {
+      if (DEBUG_ARM) return true;
+      if (side) {
+        const arm = puppetArms[side];
+        return !(arm && arm.ready);
+      }
+      return Object.values(puppetArms).some((arm) => !arm.ready);
     }
 
     function updateVisibility() {
-      const showDebug = isDebugActive();
-      const showLeft = showDebug && debugToggles.leftArm;
-      const showRight = showDebug && debugToggles.rightArm;
-      const showBody = showDebug && debugToggles.body;
-      const showFace = showDebug && debugToggles.face;
+      const globalDebug = isDebugActive();
+      const leftDebug = isDebugActive('left');
+      const rightDebug = isDebugActive('right');
+      const showLeft = leftDebug && debugToggles.leftArm;
+      const showRight = rightDebug && debugToggles.rightArm;
+      const showBody = globalDebug && debugToggles.body;
+      const showFace = globalDebug && debugToggles.face;
 
-      if (armPath) armPath.style.display = showLeft ? 'block' : 'none';
+      if (armPaths.left) armPaths.left.style.display = showLeft ? 'block' : 'none';
+      if (armPaths.right) armPaths.right.style.display = showRight ? 'block' : 'none';
 
       const toggle = (elements, show) => {
         for (const el of elements) {
@@ -279,14 +293,22 @@
 
       toggle(segments.face.map((guide) => guide.polyline), showFace);
 
-      if (puppetOverlay.upper) {
-        puppetOverlay.upper.style.display = puppetArmReady ? 'none' : 'block';
-      }
-      if (puppetOverlay.lower) {
-        puppetOverlay.lower.style.display = puppetArmReady ? 'none' : 'block';
-      }
-      if (upperArmEl) upperArmEl.style.display = showDebug ? 'none' : '';
-      if (lowerArmEl) lowerArmEl.style.display = showDebug ? 'none' : '';
+      const updateArmElements = (side) => {
+        const overlay = puppetOverlays[side];
+        const arm = puppetArms[side];
+        if (overlay.upper) {
+          overlay.upper.style.display = arm.ready ? 'none' : 'block';
+        }
+        if (overlay.lower) {
+          overlay.lower.style.display = arm.ready ? 'none' : 'block';
+        }
+        const debugActive = side === 'left' ? leftDebug : rightDebug;
+        if (arm.upper) arm.upper.style.display = debugActive ? 'none' : '';
+        if (arm.lower) arm.lower.style.display = debugActive ? 'none' : '';
+      };
+
+      updateArmElements('left');
+      updateArmElements('right');
     }
 
     let frames = [];
@@ -298,15 +320,21 @@
       body: { top: null, bottom: null, left: null, right: null, center: null },
       face: []
     };
-    let armPath = null;
+    const armPaths = { left: null, right: null };
     let running = false;
-    let upperArmEl = null;
-    let lowerArmEl = null;
-    let puppetArmReady = false;
-    let puppetWarningShown = false;
-    let lastArmRig = null;
-    const lastArmAngles = { upper: null, lower: null };
-    const puppetOverlay = { upper: null, lower: null };
+    const puppetOverlays = {
+      left: { upper: null, lower: null },
+      right: { upper: null, lower: null }
+    };
+    const puppetArms = {
+      left: { upper: null, lower: null, ready: false, warningShown: false },
+      right: { upper: null, lower: null, ready: false, warningShown: false }
+    };
+    const lastArmRigs = { left: null, right: null };
+    const lastArmAngles = {
+      left: { upper: null, lower: null },
+      right: { upper: null, lower: null }
+    };
 
     function seg(id, stroke = '#4a8bff', width = 10) {
       const line = document.createElementNS(NS, 'line');
@@ -357,10 +385,10 @@
       return pts;
     }
 
-    function rotatePuppetSegment(el, origin, target, key) {
+    function rotatePuppetSegment(el, origin, target, side, key) {
       if (!el || !origin || !target) return;
-      const ang = clampAngle(lastArmAngles[key], angle(origin, target));
-      lastArmAngles[key] = ang;
+      const ang = clampAngle(lastArmAngles[side][key], angle(origin, target));
+      lastArmAngles[side][key] = ang;
       el.style.transformOrigin = `${origin.x}px ${origin.y}px`;
       el.style.transform = `rotate(${ang}deg)`;
     }
@@ -373,8 +401,8 @@
       line.setAttribute('y2', to.y);
     }
 
-    function alignArmToPuppet(rawArm) {
-      if (!rawArm) return null;
+    function alignLimbToPuppet(rawArm, lengths) {
+      if (!rawArm || !lengths) return null;
       const { A, B, C } = rawArm;
       if (!A || !B || !C) return null;
       const upperDx = B.x - A.x;
@@ -384,8 +412,8 @@
       const upperUnitX = upperDx / upperLen;
       const upperUnitY = upperDy / upperLen;
       const alignedB = {
-        x: A.x + upperUnitX * PUPPET_UPPER_ARM_LEN,
-        y: A.y + upperUnitY * PUPPET_UPPER_ARM_LEN
+        x: A.x + upperUnitX * lengths.upper,
+        y: A.y + upperUnitY * lengths.upper
       };
 
       const lowerDx = C.x - B.x;
@@ -397,11 +425,95 @@
       const lowerUnitX = lowerDx / lowerLen;
       const lowerUnitY = lowerDy / lowerLen;
       const alignedC = {
-        x: alignedB.x + lowerUnitX * PUPPET_LOWER_ARM_LEN,
-        y: alignedB.y + lowerUnitY * PUPPET_LOWER_ARM_LEN
+        x: alignedB.x + lowerUnitX * lengths.lower,
+        y: alignedB.y + lowerUnitY * lengths.lower
       };
 
       return { A, B: alignedB, C: alignedC };
+    }
+
+    function alignSegmentToLength(origin, target, length) {
+      if (!origin || !target) return null;
+      const dx = target.x - origin.x;
+      const dy = target.y - origin.y;
+      const len = Math.hypot(dx, dy);
+      if (len < 1e-3) return {
+        x: origin.x,
+        y: origin.y + length
+      };
+      const scale = length / len;
+      return {
+        x: origin.x + dx * scale,
+        y: origin.y + dy * scale
+      };
+    }
+
+    function computeTorsoRig(LSh, RSh, LH, RH, rig) {
+      if (!LSh || !RSh || !LH || !RH || !rig) return null;
+      const leftShoulder = toRig(LSh, rig);
+      const rightShoulder = toRig(RSh, rig);
+      const rawLeftHip = toRig(LH, rig);
+      const rawRightHip = toRig(RH, rig);
+      if (!leftShoulder || !rightShoulder || !rawLeftHip || !rawRightHip) return null;
+
+      const topMid = mid(leftShoulder, rightShoulder);
+      const rawBottomMid = mid(rawLeftHip, rawRightHip);
+      const centerBottom = alignSegmentToLength(topMid, rawBottomMid, PUPPET_TORSO_CENTER_LEN) || rawBottomMid;
+
+      const hipDirDx = rawRightHip.x - rawLeftHip.x;
+      const hipDirDy = rawRightHip.y - rawLeftHip.y;
+      const hipDirLen = Math.hypot(hipDirDx, hipDirDy);
+      const hipDir = hipDirLen < 1e-3
+        ? { x: 1, y: 0 }
+        : { x: hipDirDx / hipDirLen, y: hipDirDy / hipDirLen };
+
+      const hipHalf = PUPPET_HIP_SPAN / 2;
+      const hipLeftBase = {
+        x: centerBottom.x - hipDir.x * hipHalf,
+        y: centerBottom.y - hipDir.y * hipHalf
+      };
+      const hipRightBase = {
+        x: centerBottom.x + hipDir.x * hipHalf,
+        y: centerBottom.y + hipDir.y * hipHalf
+      };
+
+      let leftHip = alignSegmentToLength(leftShoulder, hipLeftBase, PUPPET_LEFT_TORSO_LEN) || hipLeftBase;
+      let rightHip = alignSegmentToLength(rightShoulder, hipRightBase, PUPPET_RIGHT_TORSO_LEN) || hipRightBase;
+
+      const bottomMid = mid(leftHip, rightHip);
+      const desiredBottomMid = alignSegmentToLength(topMid, bottomMid, PUPPET_TORSO_CENTER_LEN) || bottomMid;
+      const correction = {
+        x: desiredBottomMid.x - bottomMid.x,
+        y: desiredBottomMid.y - bottomMid.y
+      };
+
+      leftHip = { x: leftHip.x + correction.x, y: leftHip.y + correction.y };
+      rightHip = { x: rightHip.x + correction.x, y: rightHip.y + correction.y };
+
+      return {
+        shoulders: { left: leftShoulder, right: rightShoulder },
+        hips: { left: leftHip, right: rightHip },
+        centerTop: topMid,
+        centerBottom: desiredBottomMid
+      };
+    }
+
+    function computeArmRig(side, shoulder, elbow, wrist, rig, lengths) {
+      if (!rig || !lengths) return lastArmRigs[side] || null;
+      if (shoulder && elbow && wrist) {
+        const raw = {
+          A: toRig(shoulder, rig),
+          B: toRig(elbow, rig),
+          C: toRig(wrist, rig)
+        };
+        if (!raw.A || !raw.B || !raw.C) {
+          return lastArmRigs[side] || null;
+        }
+        const aligned = alignLimbToPuppet(raw, lengths) || raw;
+        lastArmRigs[side] = aligned;
+        return aligned;
+      }
+      return lastArmRigs[side] || null;
     }
 
     function updateFaceGuides(kp, rig) {
@@ -456,54 +568,56 @@
       const LH = safeKP(kp, 'leftHip');
       const RH = safeKP(kp, 'rightHip');
 
-      let currentArmRig = null;
-      if (LSh && LE && LW) {
-        const rawRig = {
-          A: toRig(LSh, rig),
-          B: toRig(LE, rig),
-          C: toRig(LW, rig)
-        };
-        currentArmRig = alignArmToPuppet(rawRig) || rawRig;
-        lastArmRig = currentArmRig;
-      } else if (lastArmRig) {
-        currentArmRig = lastArmRig;
-      }
+      const leftArmRig = computeArmRig('left', LSh, LE, LW, rig, {
+        upper: PUPPET_UPPER_ARM_LEN,
+        lower: PUPPET_LOWER_ARM_LEN
+      });
+      const rightArmRig = computeArmRig('right', RSh, RE, RW, rig, {
+        upper: PUPPET_RIGHT_UPPER_ARM_LEN,
+        lower: PUPPET_RIGHT_LOWER_ARM_LEN
+      });
+      const torsoRig = computeTorsoRig(LSh, RSh, LH, RH, rig);
 
-      if (currentArmRig && armPath) {
-        const { A, B, C } = currentArmRig;
-        armPath.setAttribute('d', `M ${A.x} ${A.y} L ${B.x} ${B.y} L ${C.x} ${C.y}`);
-      }
+      const leftDebugActive = isDebugActive('left');
+      const rightDebugActive = isDebugActive('right');
 
-      const showDebug = isDebugActive();
-
-      if (currentArmRig) {
-        const { A, B, C } = currentArmRig;
-        placeOverlaySegment(puppetOverlay.upper, A, B);
-        placeOverlaySegment(puppetOverlay.lower, B, C);
-      }
-
-      if (currentArmRig && showDebug) {
-        const { A, B, C } = currentArmRig;
+      if (leftArmRig) {
+        const { A, B, C } = leftArmRig;
+        if (armPaths.left) {
+          armPaths.left.setAttribute('d', `M ${A.x} ${A.y} L ${B.x} ${B.y} L ${C.x} ${C.y}`);
+        }
+        placeOverlaySegment(puppetOverlays.left.upper, A, B);
+        placeOverlaySegment(puppetOverlays.left.lower, B, C);
         placeLine(segments.left.upper, A, B);
         placeLine(segments.left.lower, B, C);
-      }
-
-      if (currentArmRig && !showDebug && puppetArmReady) {
-        const { A, B, C } = currentArmRig;
-        rotatePuppetSegment(upperArmEl, A, B, 'upper');
-        rotatePuppetSegment(lowerArmEl, B, C, 'lower');
-      }
-
-      if (showDebug) {
-        if (RSh && RE) placeRigLine(segments.right.upper, RSh, RE, rig);
-        if (RE && RW) placeRigLine(segments.right.lower, RE, RW, rig);
-        if (LSh && RSh) placeRigLine(segments.body.top, LSh, RSh, rig);
-        if (LH && RH) placeRigLine(segments.body.bottom, LH, RH, rig);
-        if (LSh && LH) placeRigLine(segments.body.left, LSh, LH, rig);
-        if (RSh && RH) placeRigLine(segments.body.right, RSh, RH, rig);
-        if (LSh && RSh && LH && RH) {
-          placeRigLine(segments.body.center, mid(LSh, RSh), mid(LH, RH), rig);
+        if (!leftDebugActive && puppetArms.left.ready) {
+          rotatePuppetSegment(puppetArms.left.upper, A, B, 'left', 'upper');
+          rotatePuppetSegment(puppetArms.left.lower, B, C, 'left', 'lower');
         }
+      }
+
+      if (rightArmRig) {
+        const { A, B, C } = rightArmRig;
+        if (armPaths.right) {
+          armPaths.right.setAttribute('d', `M ${A.x} ${A.y} L ${B.x} ${B.y} L ${C.x} ${C.y}`);
+        }
+        placeOverlaySegment(puppetOverlays.right.upper, A, B);
+        placeOverlaySegment(puppetOverlays.right.lower, B, C);
+        placeLine(segments.right.upper, A, B);
+        placeLine(segments.right.lower, B, C);
+        if (!rightDebugActive && puppetArms.right.ready) {
+          rotatePuppetSegment(puppetArms.right.upper, A, B, 'right', 'upper');
+          rotatePuppetSegment(puppetArms.right.lower, B, C, 'right', 'lower');
+        }
+      }
+
+      if (torsoRig) {
+        const { shoulders, hips, centerTop, centerBottom } = torsoRig;
+        placeLine(segments.body.top, shoulders.left, shoulders.right);
+        placeLine(segments.body.bottom, hips.left, hips.right);
+        placeLine(segments.body.left, shoulders.left, hips.left);
+        placeLine(segments.body.right, shoulders.right, hips.right);
+        placeLine(segments.body.center, centerTop, centerBottom);
       }
 
       updateFaceGuides(kp, rig);
@@ -535,14 +649,23 @@
         svgEl.style.height = 'auto';
         const skel = svgEl.getElementById('skeleton_1_');
         if (skel) skel.style.display = 'none';
-        armPath = document.createElementNS(NS, 'path');
-        armPath.id = 'L_arm_path';
-        armPath.setAttribute('fill', 'none');
-        armPath.setAttribute('stroke', '#4a8bff');
-        armPath.setAttribute('stroke-width', '18');
-        armPath.setAttribute('stroke-linecap', 'round');
-        armPath.setAttribute('stroke-linejoin', 'round');
-        svgEl.appendChild(armPath);
+        armPaths.left = document.createElementNS(NS, 'path');
+        armPaths.left.id = 'L_arm_path';
+        armPaths.left.setAttribute('fill', 'none');
+        armPaths.left.setAttribute('stroke', '#4a8bff');
+        armPaths.left.setAttribute('stroke-width', '18');
+        armPaths.left.setAttribute('stroke-linecap', 'round');
+        armPaths.left.setAttribute('stroke-linejoin', 'round');
+        svgEl.appendChild(armPaths.left);
+
+        armPaths.right = document.createElementNS(NS, 'path');
+        armPaths.right.id = 'R_arm_path';
+        armPaths.right.setAttribute('fill', 'none');
+        armPaths.right.setAttribute('stroke', '#4a8bff');
+        armPaths.right.setAttribute('stroke-width', '18');
+        armPaths.right.setAttribute('stroke-linecap', 'round');
+        armPaths.right.setAttribute('stroke-linejoin', 'round');
+        svgEl.appendChild(armPaths.right);
         segments.left.upper = seg('L_upper');
         segments.left.lower = seg('L_lower');
         segments.right.upper = seg('R_upper');
@@ -589,42 +712,84 @@
           segments.face.push({ polyline: poly, ids: guide.ids, fallback });
         }
 
-        puppetOverlay.upper = document.createElementNS(NS, 'line');
-        puppetOverlay.upper.id = 'leftArmUpperOverlay';
-        puppetOverlay.upper.setAttribute('stroke', '#99AFB1');
-        puppetOverlay.upper.setAttribute('stroke-linecap', 'round');
-        puppetOverlay.upper.setAttribute('stroke-width', '46');
-        puppetOverlay.upper.setAttribute('opacity', '0.92');
-        puppetOverlay.upper.style.pointerEvents = 'none';
-        svgEl.appendChild(puppetOverlay.upper);
+        puppetOverlays.left.upper = document.createElementNS(NS, 'line');
+        puppetOverlays.left.upper.id = 'leftArmUpperOverlay';
+        puppetOverlays.left.upper.setAttribute('stroke', '#99AFB1');
+        puppetOverlays.left.upper.setAttribute('stroke-linecap', 'round');
+        puppetOverlays.left.upper.setAttribute('stroke-width', '46');
+        puppetOverlays.left.upper.setAttribute('opacity', '0.92');
+        puppetOverlays.left.upper.style.pointerEvents = 'none';
+        svgEl.appendChild(puppetOverlays.left.upper);
 
-        puppetOverlay.lower = document.createElementNS(NS, 'line');
-        puppetOverlay.lower.id = 'leftArmLowerOverlay';
-        puppetOverlay.lower.setAttribute('stroke', '#F3AF9D');
-        puppetOverlay.lower.setAttribute('stroke-linecap', 'round');
-        puppetOverlay.lower.setAttribute('stroke-width', '40');
-        puppetOverlay.lower.setAttribute('opacity', '0.96');
-        puppetOverlay.lower.style.pointerEvents = 'none';
-        svgEl.appendChild(puppetOverlay.lower);
+        puppetOverlays.left.lower = document.createElementNS(NS, 'line');
+        puppetOverlays.left.lower.id = 'leftArmLowerOverlay';
+        puppetOverlays.left.lower.setAttribute('stroke', '#F3AF9D');
+        puppetOverlays.left.lower.setAttribute('stroke-linecap', 'round');
+        puppetOverlays.left.lower.setAttribute('stroke-width', '40');
+        puppetOverlays.left.lower.setAttribute('opacity', '0.96');
+        puppetOverlays.left.lower.style.pointerEvents = 'none';
+        svgEl.appendChild(puppetOverlays.left.lower);
 
-        const upperCandidates = [
-          'leftUpperArm',
-          'LeftUpperArm',
-          'left_upper_arm',
-          'Left_arm_upper',
-          'leftArmUpper',
-          'leftupperarm',
-          'leftArm_Upper'
-        ];
-        const lowerCandidates = [
-          'leftLowerArm',
-          'LeftLowerArm',
-          'left_lower_arm',
-          'Left_arm_lower',
-          'leftArmLower',
-          'leftlowerarm',
-          'leftArm_Lower'
-        ];
+        puppetOverlays.right.upper = document.createElementNS(NS, 'line');
+        puppetOverlays.right.upper.id = 'rightArmUpperOverlay';
+        puppetOverlays.right.upper.setAttribute('stroke', '#99AFB1');
+        puppetOverlays.right.upper.setAttribute('stroke-linecap', 'round');
+        puppetOverlays.right.upper.setAttribute('stroke-width', '46');
+        puppetOverlays.right.upper.setAttribute('opacity', '0.92');
+        puppetOverlays.right.upper.style.pointerEvents = 'none';
+        svgEl.appendChild(puppetOverlays.right.upper);
+
+        puppetOverlays.right.lower = document.createElementNS(NS, 'line');
+        puppetOverlays.right.lower.id = 'rightArmLowerOverlay';
+        puppetOverlays.right.lower.setAttribute('stroke', '#F3AF9D');
+        puppetOverlays.right.lower.setAttribute('stroke-linecap', 'round');
+        puppetOverlays.right.lower.setAttribute('stroke-width', '40');
+        puppetOverlays.right.lower.setAttribute('opacity', '0.96');
+        puppetOverlays.right.lower.style.pointerEvents = 'none';
+        svgEl.appendChild(puppetOverlays.right.lower);
+
+        const armCandidates = {
+          left: {
+            upper: [
+              'leftUpperArm',
+              'LeftUpperArm',
+              'left_upper_arm',
+              'Left_arm_upper',
+              'leftArmUpper',
+              'leftupperarm',
+              'leftArm_Upper'
+            ],
+            lower: [
+              'leftLowerArm',
+              'LeftLowerArm',
+              'left_lower_arm',
+              'Left_arm_lower',
+              'leftArmLower',
+              'leftlowerarm',
+              'leftArm_Lower'
+            ]
+          },
+          right: {
+            upper: [
+              'rightUpperArm',
+              'RightUpperArm',
+              'right_upper_arm',
+              'Right_arm_upper',
+              'rightArmUpper',
+              'rightupperarm',
+              'rightArm_Upper'
+            ],
+            lower: [
+              'rightLowerArm',
+              'RightLowerArm',
+              'right_lower_arm',
+              'Right_arm_lower',
+              'rightArmLower',
+              'rightlowerarm',
+              'rightArm_Lower'
+            ]
+          }
+        };
 
         const findArmPart = (candidates) => {
           for (const id of candidates) {
@@ -634,30 +799,35 @@
           return null;
         };
 
-        upperArmEl = findArmPart(upperCandidates);
-        lowerArmEl = findArmPart(lowerCandidates);
-        puppetArmReady = Boolean(upperArmEl && lowerArmEl);
+        const setupArmPart = (side) => {
+          const candidates = armCandidates[side];
+          const upper = findArmPart(candidates.upper);
+          const lower = findArmPart(candidates.lower);
+          puppetArms[side].upper = upper;
+          puppetArms[side].lower = lower;
+          puppetArms[side].ready = Boolean(upper && lower);
 
-        if (!puppetArmReady && !puppetWarningShown) {
-          console.warn('Braço esquerdo do puppet não encontrado em boy.svg; mantendo modo debug.');
-          puppetWarningShown = true;
-        }
+          if (!puppetArms[side].ready && !puppetArms[side].warningShown) {
+            const sideLabel = side === 'left' ? 'esquerdo' : 'direito';
+            console.warn(`Braço ${sideLabel} do puppet não encontrado em boy.svg; mantendo modo debug.`);
+            puppetArms[side].warningShown = true;
+          }
 
-        if (upperArmEl) {
-          upperArmEl.style.transformBox = 'fill-box';
-          upperArmEl.classList.add('joint');
-        }
-        if (lowerArmEl) {
-          lowerArmEl.style.transformBox = 'fill-box';
-          lowerArmEl.classList.add('joint');
-        }
+          const attach = (el) => {
+            if (!el) return;
+            el.style.transformBox = 'fill-box';
+            el.classList.add('joint');
+            if (el.parentNode) {
+              el.parentNode.appendChild(el);
+            }
+          };
 
-        if (upperArmEl && upperArmEl.parentNode) {
-          upperArmEl.parentNode.appendChild(upperArmEl);
-        }
-        if (lowerArmEl && lowerArmEl.parentNode) {
-          lowerArmEl.parentNode.appendChild(lowerArmEl);
-        }
+          attach(upper);
+          attach(lower);
+        };
+
+        setupArmPart('left');
+        setupArmPart('right');
 
         updateVisibility();
         tryStart();
