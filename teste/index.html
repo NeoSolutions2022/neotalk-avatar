@@ -150,6 +150,86 @@
     const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
     const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
     const angle = (a, b) => Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+    const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+    const formatFloat = (value) => {
+      if (!Number.isFinite(value)) return '0';
+      const fixed = Number(value).toFixed(2);
+      const trimmed = fixed.replace(/\.0+$/, '').replace(/(\.\d+?)0+$/, '$1');
+      return trimmed === '-0' ? '0' : trimmed;
+    };
+
+    function normalizeLoopPoints(points) {
+      if (!Array.isArray(points) || points.length < 2) return points || [];
+      const first = points[0];
+      const last = points[points.length - 1];
+      if (!first || !last) return points;
+      if (Math.hypot(first.x - last.x, first.y - last.y) < 1e-3) {
+        return points.slice(0, -1);
+      }
+      return points;
+    }
+
+    function centroid(points) {
+      if (!Array.isArray(points) || !points.length) return { x: 0, y: 0 };
+      let sumX = 0;
+      let sumY = 0;
+      for (const pt of points) {
+        sumX += pt.x;
+        sumY += pt.y;
+      }
+      const count = points.length;
+      return { x: sumX / count, y: sumY / count };
+    }
+
+    function polygonArea(points) {
+      if (!Array.isArray(points) || points.length < 3) return 0;
+      let area = 0;
+      const len = points.length;
+      for (let i = 0; i < len; i += 1) {
+        const p0 = points[i];
+        const p1 = points[(i + 1) % len];
+        area += p0.x * p1.y - p1.x * p0.y;
+      }
+      return Math.abs(area / 2);
+    }
+
+    function buildSmoothPath(points, { closed = false, tension = 0.5 } = {}) {
+      if (!Array.isArray(points) || points.length < 2) return '';
+      const pts = points.slice();
+      if (pts.length === 2) {
+        const [start, end] = pts;
+        return `M ${formatFloat(start.x)} ${formatFloat(start.y)} L ${formatFloat(end.x)} ${formatFloat(end.y)}`;
+      }
+
+      const len = pts.length;
+      const safeTension = clamp(tension, 0, 1);
+      const getPoint = (idx) => {
+        if (closed) {
+          const wrapped = (idx % len + len) % len;
+          return pts[wrapped];
+        }
+        if (idx < 0) return pts[0];
+        if (idx >= len) return pts[len - 1];
+        return pts[idx];
+      };
+
+      let path = `M ${formatFloat(pts[0].x)} ${formatFloat(pts[0].y)}`;
+      const segments = closed ? len : len - 1;
+      for (let i = 0; i < segments; i += 1) {
+        const p0 = getPoint(i - 1);
+        const p1 = getPoint(i);
+        const p2 = getPoint(i + 1);
+        const p3 = getPoint(i + 2);
+        if (!p1 || !p2 || !p0 || !p3) continue;
+        const c1x = p1.x + (p2.x - p0.x) * (safeTension / 6);
+        const c1y = p1.y + (p2.y - p0.y) * (safeTension / 6);
+        const c2x = p2.x - (p3.x - p1.x) * (safeTension / 6);
+        const c2y = p2.y - (p3.y - p1.y) * (safeTension / 6);
+        path += ` C ${formatFloat(c1x)} ${formatFloat(c1y)} ${formatFloat(c2x)} ${formatFloat(c2y)} ${formatFloat(p2.x)} ${formatFloat(p2.y)}`;
+      }
+      if (closed) path += ' Z';
+      return path;
+    }
 
     const PUPPET_LEFT_SH = { x: 605.7, y: 294.3 };
     const PUPPET_RIGHT_SH = { x: 392.8, y: 294.3 };
@@ -329,14 +409,6 @@
       return { a, b, c, d, e, f };
     }
 
-    function applyFaceTemplateTransform(element, fromPoints, toPoints) {
-      if (!element) return;
-      const matrix = computeSimilarityTransform(fromPoints, toPoints);
-      if (!matrix) return;
-      const { a, b, c, d, e, f } = matrix;
-      element.setAttribute('transform', `matrix(${a} ${b} ${c} ${d} ${e} ${f})`);
-    }
-
     function applyHeadTransform(matrix) {
       if (!headTargets.length) return;
       if (matrix) {
@@ -481,57 +553,216 @@
       return poly;
     }
 
-    function faceFeature(id, options = {}) {
-      const {
-        stroke = '#1f2a44',
-        width = 6,
-        fill = 'none',
-        opacity = 1,
-        join = 'round',
-        cap = 'round',
-        templateId = null
-      } = options;
+    const faceFeatureRegistry = new Map();
 
-      if (templateId && svgEl) {
-        const template = typeof svgEl.getElementById === 'function'
-          ? svgEl.getElementById(templateId)
-          : svgEl.querySelector(`#${templateId}`);
-        if (!template || !template.parentNode) {
-          console.warn(`Template ${templateId} não encontrado para ${id}`);
-          return null;
-        }
-        const clone = template.cloneNode(true);
-        clone.setAttribute('id', id);
-        clone.removeAttribute('transform');
-        clone.style.pointerEvents = 'none';
-        clone.style.opacity = '';
-        clone.removeAttribute('opacity');
-        clone.dataset.faceTemplate = templateId;
-        if (!template.dataset.faceTemplateHidden) {
-          template.dataset.faceTemplateHidden = 'true';
-          template.style.opacity = '0';
-          template.setAttribute('opacity', '0');
-          template.style.pointerEvents = 'none';
-        }
-        if (faceOverlayLayer && faceOverlayLayer.parentNode) {
-          faceOverlayLayer.appendChild(clone);
-        } else {
-          template.parentNode.insertBefore(clone, template.nextSibling);
-        }
-        return clone;
+    function appendToFaceOverlay(element) {
+      if (!element) return null;
+      element.style.pointerEvents = 'none';
+      if (faceOverlayLayer && faceOverlayLayer.parentNode) {
+        faceOverlayLayer.appendChild(element);
+      } else if (svgEl) {
+        svgEl.appendChild(element);
       }
+      return element;
+    }
 
-      const poly = document.createElementNS(NS, 'polyline');
-      poly.id = id;
-      poly.setAttribute('fill', fill);
-      poly.setAttribute('stroke', stroke);
-      poly.setAttribute('stroke-width', width);
-      poly.setAttribute('stroke-linecap', cap);
-      poly.setAttribute('stroke-linejoin', join);
-      poly.setAttribute('opacity', opacity);
-      poly.style.pointerEvents = 'none';
-      svgEl.appendChild(poly);
-      return poly;
+    function createPathElement(id, attributes = {}) {
+      const path = document.createElementNS(NS, 'path');
+      if (id) path.id = id;
+      for (const [key, value] of Object.entries(attributes)) {
+        path.setAttribute(key, value);
+      }
+      appendToFaceOverlay(path);
+      return path;
+    }
+
+    function createGroupElement(id) {
+      const group = document.createElementNS(NS, 'g');
+      if (id) group.id = id;
+      appendToFaceOverlay(group);
+      return group;
+    }
+
+    function createBrowHandler(options = {}) {
+      const path = createPathElement(options.id, {
+        fill: 'none',
+        stroke: options.stroke || '#2C323A',
+        'stroke-width': options.strokeWidth ?? 12,
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round'
+      });
+
+      return {
+        el: path,
+        update({ points }) {
+          if (!Array.isArray(points) || points.length < 2) return;
+          const data = buildSmoothPath(points, { closed: false, tension: options.tension ?? 0.6 });
+          path.setAttribute('d', data);
+        }
+      };
+    }
+
+    function createEyeHandler(options = {}) {
+      const group = createGroupElement(options.id);
+      const outer = document.createElementNS(NS, 'path');
+      outer.setAttribute('fill', options.fill || '#FFFFFF');
+      outer.setAttribute('stroke', options.stroke || '#2C323A');
+      outer.setAttribute('stroke-width', options.strokeWidth ?? 4);
+      outer.setAttribute('stroke-linejoin', 'round');
+      outer.setAttribute('stroke-linecap', 'round');
+      group.appendChild(outer);
+
+      const pupil = document.createElementNS(NS, 'circle');
+      pupil.setAttribute('fill', options.pupilFill || '#2C323A');
+      group.appendChild(pupil);
+
+      const highlight = document.createElementNS(NS, 'circle');
+      highlight.setAttribute('fill', options.highlightFill || '#FFFFFF');
+      highlight.setAttribute('opacity', options.highlightOpacity ?? 0.6);
+      group.appendChild(highlight);
+
+      return {
+        el: group,
+        update({ points }) {
+          const pts = normalizeLoopPoints(points);
+          if (!Array.isArray(pts) || pts.length < 3) return;
+          const tension = options.tension ?? 0.75;
+          const pathData = buildSmoothPath(pts, { closed: true, tension });
+          outer.setAttribute('d', pathData);
+
+          const len = pts.length;
+          if (len < 4) return;
+          const idx = (i) => pts[(i + len) % len];
+          const outerCorner = idx(0);
+          const innerCorner = idx(Math.floor(len / 2));
+          const topMid = mid(idx(1), idx(2));
+          const bottomMid = mid(idx(len - 2), idx(len - 1));
+          const eyeCenter = centroid([outerCorner, innerCorner, topMid, bottomMid]);
+          const horizontal = dist(outerCorner, innerCorner);
+          const vertical = dist(topMid, bottomMid);
+          const scale = options.pupilScale ?? 0.22;
+          const radius = clamp(Math.min(horizontal, vertical * 1.4) * scale, 0.6, 12);
+          const pupilY = eyeCenter.y + vertical * 0.05;
+          const openness = clamp(vertical / Math.max(horizontal, 1), 0, 1);
+          pupil.setAttribute('cx', formatFloat(eyeCenter.x));
+          pupil.setAttribute('cy', formatFloat(pupilY));
+          pupil.setAttribute('r', formatFloat(radius));
+          pupil.style.display = openness > 0.08 ? 'block' : 'none';
+
+          const highlightRadius = radius * (options.highlightScale ?? 0.38);
+          const highlightOffsetX = radius * 0.4;
+          const highlightOffsetY = radius * 0.4;
+          const highlightX = eyeCenter.x - highlightOffsetX;
+          const highlightY = pupilY - highlightOffsetY;
+          highlight.setAttribute('cx', formatFloat(highlightX));
+          highlight.setAttribute('cy', formatFloat(highlightY));
+          highlight.setAttribute('r', formatFloat(highlightRadius));
+          highlight.style.display = openness > 0.18 && radius > 1.1 ? 'block' : 'none';
+        }
+      };
+    }
+
+    function createNoseHandler(options = {}) {
+      const group = createGroupElement(options.id);
+      const bridge = document.createElementNS(NS, 'path');
+      bridge.setAttribute('fill', 'none');
+      bridge.setAttribute('stroke', options.stroke || '#2C323A');
+      bridge.setAttribute('stroke-width', options.bridgeWidth ?? 3);
+      bridge.setAttribute('stroke-linecap', 'round');
+      bridge.setAttribute('stroke-linejoin', 'round');
+      bridge.style.display = 'none';
+      group.appendChild(bridge);
+
+      const base = document.createElementNS(NS, 'path');
+      base.setAttribute('fill', 'none');
+      base.setAttribute('stroke', options.stroke || '#2C323A');
+      base.setAttribute('stroke-width', options.baseWidth ?? 3.8);
+      base.setAttribute('stroke-linecap', 'round');
+      base.setAttribute('stroke-linejoin', 'round');
+      base.style.display = 'none';
+      group.appendChild(base);
+
+      return {
+        el: group,
+        update({ points, part }) {
+          if (!Array.isArray(points) || points.length < 2) return;
+          const tension = part === 'base' ? options.baseTension ?? 0.55 : options.bridgeTension ?? 0.35;
+          const data = buildSmoothPath(points, { closed: false, tension });
+          if (part === 'base') {
+            base.setAttribute('d', data);
+            base.style.display = 'block';
+          } else {
+            bridge.setAttribute('d', data);
+            bridge.style.display = 'block';
+          }
+        }
+      };
+    }
+
+    function createMouthHandler(options = {}) {
+      const group = createGroupElement(options.id);
+      const outer = document.createElementNS(NS, 'path');
+      outer.setAttribute('fill', options.outerFill || '#DF7977');
+      outer.setAttribute('stroke', options.outerStroke || '#B45656');
+      outer.setAttribute('stroke-width', options.outerStrokeWidth ?? 4);
+      outer.setAttribute('stroke-linecap', 'round');
+      outer.setAttribute('stroke-linejoin', 'round');
+      group.appendChild(outer);
+
+      const inner = document.createElementNS(NS, 'path');
+      inner.setAttribute('fill', options.innerFill || '#B24848');
+      inner.setAttribute('stroke', 'none');
+      inner.style.opacity = options.innerOpacity ?? 0.85;
+      inner.style.display = 'none';
+      group.appendChild(inner);
+
+      return {
+        el: group,
+        update({ points, part }) {
+          const pts = normalizeLoopPoints(points);
+          if (!Array.isArray(pts) || pts.length < 3) return;
+          const tension = part === 'outer' ? options.outerTension ?? 0.6 : options.innerTension ?? 0.58;
+          const data = buildSmoothPath(pts, { closed: true, tension });
+          if (part === 'outer') {
+            outer.setAttribute('d', data);
+            const upperMid = centroid(pts.slice(0, Math.floor(pts.length / 2)));
+            const lowerMid = centroid(pts.slice(Math.floor(pts.length / 2)));
+            const openness = dist(upperMid, lowerMid);
+            const width = Math.max(dist(pts[0], pts[Math.floor(pts.length / 2)]), 1);
+            const strokeWidth = clamp((openness / Math.max(width, 1)) * (options.outerStrokeWidth ?? 4) + 2, 3, 6);
+            outer.setAttribute('stroke-width', formatFloat(strokeWidth));
+          } else {
+            inner.setAttribute('d', data);
+            const area = polygonArea(pts);
+            inner.style.display = area > (options.innerAreaThreshold ?? 8) ? 'block' : 'none';
+          }
+        }
+      };
+    }
+
+    const FACE_FEATURE_FACTORIES = {
+      brow: createBrowHandler,
+      eye: createEyeHandler,
+      nose: createNoseHandler,
+      mouth: createMouthHandler
+    };
+
+    function buildFaceFeature(options = {}) {
+      if (!options || !options.type) return null;
+      const key = options.sharedKey || options.id || null;
+      if (key && faceFeatureRegistry.has(key)) {
+        return faceFeatureRegistry.get(key);
+      }
+      const factory = FACE_FEATURE_FACTORIES[options.type];
+      if (!factory) return null;
+      const handler = factory(options) || null;
+      if (handler && handler.el && options.id && !handler.el.id) {
+        handler.el.id = options.id;
+      }
+      if (key && handler) {
+        faceFeatureRegistry.set(key, handler);
+      }
+      return handler;
     }
 
     function readPoint(id) {
@@ -694,14 +925,19 @@
       if (!rig || !segments.face.length) return;
       let headMatrix = null;
       for (const segment of segments.face) {
-        const { debug, feature, ids, fallback, templateId, templateBasis, isContour } = segment;
+        const { debug, handler, handlerEl, featurePart, ids, fallback, isContour } = segment;
         const points = [];
         for (let i = 0; i < ids.length; i += 1) {
           const id = ids[i];
           const raw = safeKP(kp, id);
           if (raw) {
-            points.push(toRig(raw, rig));
-          } else if (fallback && fallback[i]) {
+            const mapped = toRig(raw, rig);
+            if (mapped) {
+              points.push(mapped);
+              continue;
+            }
+          }
+          if (fallback && fallback[i]) {
             points.push(fallback[i]);
           } else {
             points.length = 0;
@@ -722,13 +958,14 @@
           headMatrix = computeSimilarityTransform(fallback, target);
         }
 
-        if (!feature || !target) continue;
-        if (templateId) {
-          const basis = templateBasis || fallback;
-          if (basis) applyFaceTemplateTransform(feature, basis, target);
-        } else if (feature.tagName === 'polyline') {
-          placePolyline(feature, target);
-        }
+        if (!handler || !target) continue;
+        handler.update({
+          points: target,
+          part: featurePart,
+          fallback,
+          ids,
+          element: handlerEl || handler.el || null
+        });
       }
       applyHeadTransform(headMatrix);
     }
@@ -858,6 +1095,7 @@
           }
         }
         faceOverlayLayer.style.pointerEvents = 'none';
+        faceFeatureRegistry.clear();
         const skel = svgEl.getElementById('skeleton_1_');
         if (skel) skel.style.display = 'none';
         armPaths.left = document.createElementNS(NS, 'path');
@@ -902,34 +1140,35 @@
           {
             id: 'face_brow_right',
             ids: ['rightBrow0', 'rightBrow1', 'rightBrow2', 'rightBrow3', 'rightBrow4'],
-            feature: { id: 'brow_right_feature', templateId: 'template_brow_right' }
+            feature: { type: 'brow', id: 'brow_right_feature', sharedKey: 'brow_right', strokeWidth: 12, tension: 0.58 }
           },
           {
             id: 'face_brow_left',
             ids: ['leftBrow0', 'leftBrow1', 'leftBrow2', 'leftBrow3', 'leftBrow4'],
-            feature: { id: 'brow_left_feature', templateId: 'template_brow_left' }
+            feature: { type: 'brow', id: 'brow_left_feature', sharedKey: 'brow_left', strokeWidth: 12, tension: 0.58 }
           },
           {
             id: 'face_eye_right',
             ids: ['rightEye0', 'rightEye1', 'rightEye2', 'rightEye3', 'rightEye4', 'rightEye5', 'rightEye0'],
             width: 5,
-            feature: { id: 'eye_right_feature', templateId: 'template_eye_right' }
+            feature: { type: 'eye', id: 'eye_right_feature', sharedKey: 'eye_right', side: 'right', strokeWidth: 4 }
           },
           {
             id: 'face_eye_left',
             ids: ['leftEye0', 'leftEye1', 'leftEye2', 'leftEye3', 'leftEye4', 'leftEye5', 'leftEye0'],
             width: 5,
-            feature: { id: 'eye_left_feature', templateId: 'template_eye_left' }
+            feature: { type: 'eye', id: 'eye_left_feature', sharedKey: 'eye_left', side: 'left', strokeWidth: 4 }
           },
           {
             id: 'face_nose_bridge',
-            ids: ['nose0', 'nose1', 'nose2', 'nose3', 'nose4']
+            ids: ['nose0', 'nose1', 'nose2', 'nose3', 'nose4'],
+            feature: { type: 'nose', id: 'nose_feature', sharedKey: 'nose', part: 'bridge', stroke: '#2C323A' }
           },
           {
             id: 'face_nose_base',
             ids: ['rightNose0', 'rightNose1', 'nose4', 'leftNose1', 'leftNose0'],
             width: 5,
-            feature: { id: 'nose_feature', templateId: 'template_nose' }
+            feature: { type: 'nose', id: 'nose_feature', sharedKey: 'nose', part: 'base', stroke: '#2C323A' }
           },
           {
             id: 'face_mouth_outer',
@@ -940,7 +1179,7 @@
               'rightMouthCorner'
             ],
             width: 7,
-            feature: { id: 'mouth_feature', templateId: 'template_mouth' }
+            feature: { type: 'mouth', id: 'mouth_feature', sharedKey: 'mouth', part: 'outer' }
           },
           {
             id: 'face_mouth_inner',
@@ -948,7 +1187,8 @@
               'rightMouthCorner', 'rightUpperLipBottom1', 'upperLipBottomMid', 'leftUpperLipBottom1',
               'leftMouthCorner', 'leftLowerLipTop0', 'lowerLipTopMid', 'rightLowerLipTop0', 'rightMouthCorner'
             ],
-            width: 4
+            width: 4,
+            feature: { type: 'mouth', sharedKey: 'mouth', part: 'inner' }
           }
         ];
 
@@ -962,22 +1202,32 @@
           }
           const fallback = fallbackPoints.map((pt) => ({ x: pt.x, y: pt.y }));
           placePolyline(debug, fallback);
-          let feature = null;
-          const templateId = guide.feature?.templateId ?? null;
+
+          let handler = null;
+          let handlerEl = null;
+          let featurePart = null;
           if (guide.feature) {
-            feature = faceFeature(guide.feature.id, guide.feature);
-            if (feature && !templateId) {
-              placePolyline(feature, fallback);
+            handler = buildFaceFeature(guide.feature);
+            handlerEl = handler?.el || null;
+            featurePart = guide.feature.part ?? null;
+            if (handler && typeof handler.update === 'function') {
+              handler.update({
+                points: fallback,
+                part: featurePart,
+                fallback,
+                ids: guide.ids,
+                element: handlerEl
+              });
             }
           }
-          const templateBasis = templateId ? fallback.map((pt) => ({ x: pt.x, y: pt.y })) : null;
+
           segments.face.push({
             debug,
-            feature,
+            handler,
+            handlerEl,
+            featurePart,
             ids: guide.ids,
             fallback,
-            templateId,
-            templateBasis,
             isContour: Boolean(guide.isContour)
           });
         }
