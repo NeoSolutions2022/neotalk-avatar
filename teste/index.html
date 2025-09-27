@@ -149,7 +149,6 @@
 
     const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
     const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
-    const angle = (a, b) => Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
     const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
     const formatFloat = (value) => {
       if (!Number.isFinite(value)) return '0';
@@ -255,6 +254,22 @@
     );
     const PUPPET_LEFT_TORSO_LEN = dist(PUPPET_LEFT_SH, PUPPET_LEFT_HIP);
     const PUPPET_RIGHT_TORSO_LEN = dist(PUPPET_RIGHT_SH, PUPPET_RIGHT_HIP);
+    const PUPPET_BODY_BASE = [
+      { ...PUPPET_RIGHT_SH },
+      { ...PUPPET_LEFT_SH },
+      { ...PUPPET_RIGHT_HIP },
+      { ...PUPPET_LEFT_HIP }
+    ];
+    const PUPPET_ARM_BASES = {
+      left: {
+        upper: [{ ...PUPPET_LEFT_SH }, { ...PUPPET_LEFT_EL }],
+        lower: [{ ...PUPPET_LEFT_EL }, { ...PUPPET_LEFT_WR }]
+      },
+      right: {
+        upper: [{ ...PUPPET_RIGHT_SH }, { ...PUPPET_RIGHT_EL }],
+        lower: [{ ...PUPPET_RIGHT_EL }, { ...PUPPET_RIGHT_WR }]
+      }
+    };
 
     const DEBUG_ARM = new URLSearchParams(window.location.search).get('debugArm') !== '0';
     const smooth = {};
@@ -266,9 +281,12 @@
     };
     let faceOverlayLayer = null;
     let headTargets = [];
+    let bodyTargets = [];
     let lastHeadMatrix = null;
+    let lastBodyMatrix = null;
     let lastRigMatrix = null;
     const HEAD_ANCHOR_ID = 'jawMid';
+    const FACE_ANCHOR_ADJUST = { x: 0, y: 6 };
     let headAnchorBase = null;
     let headAnchorOffset = null;
 
@@ -443,19 +461,26 @@
       }
     }
 
-    function clampAngle(prev, next) {
-      if (prev == null || Number.isNaN(prev)) return next;
-      let candidate = next;
-      let delta = candidate - prev;
-      while (delta > 180) {
-        candidate -= 360;
-        delta = candidate - prev;
+    function applyBodyTransform(matrix) {
+      if (!bodyTargets.length) return;
+      if (matrix) {
+        const { a, b, c, d, e, f } = matrix;
+        for (const target of bodyTargets) {
+          if (target) target.setAttribute('transform', `matrix(${a} ${b} ${c} ${d} ${e} ${f})`);
+        }
+        lastBodyMatrix = { a, b, c, d, e, f };
+        return;
       }
-      while (delta < -180) {
-        candidate += 360;
-        delta = candidate - prev;
+      if (lastBodyMatrix) {
+        const { a, b, c, d, e, f } = lastBodyMatrix;
+        for (const target of bodyTargets) {
+          if (target) target.setAttribute('transform', `matrix(${a} ${b} ${c} ${d} ${e} ${f})`);
+        }
+        return;
       }
-      return candidate;
+      for (const target of bodyTargets) {
+        if (target) target.removeAttribute('transform');
+      }
     }
 
     function updateVisibility() {
@@ -486,14 +511,16 @@
 
       toggle(segments.face.map((guide) => guide.debug), showFace);
 
-      const updateArmElements = (side, showDebug) => {
+      const updateArmElements = (side) => {
         const arm = puppetArms[side];
-        if (arm.upper) arm.upper.style.display = showDebug ? 'none' : '';
-        if (arm.lower) arm.lower.style.display = showDebug ? 'none' : '';
+        if (!arm) return;
+        const visible = arm.ready;
+        if (arm.upper) arm.upper.style.display = visible ? '' : 'none';
+        if (arm.lower) arm.lower.style.display = visible ? '' : 'none';
       };
 
-      updateArmElements('left', showLeft);
-      updateArmElements('right', showRight);
+      updateArmElements('left');
+      updateArmElements('right');
     }
 
     let frames = [];
@@ -512,7 +539,7 @@
       right: { upper: null, lower: null, ready: false, warningShown: false }
     };
     const lastArmRigs = { left: null, right: null };
-    const lastArmAngles = {
+    const lastArmMatrices = {
       left: { upper: null, lower: null },
       right: { upper: null, lower: null }
     };
@@ -780,10 +807,15 @@
 
     function rotatePuppetSegment(el, origin, target, side, key) {
       if (!el || !origin || !target) return;
-      const ang = clampAngle(lastArmAngles[side][key], angle(origin, target));
-      lastArmAngles[side][key] = ang;
-      el.style.transformOrigin = `${origin.x}px ${origin.y}px`;
-      el.style.transform = `rotate(${ang}deg)`;
+      const base = PUPPET_ARM_BASES?.[side]?.[key];
+      if (!base) return;
+      const matrix = computeSimilarityTransform(base, [origin, target]) || lastArmMatrices[side][key];
+      if (!matrix) return;
+      lastArmMatrices[side][key] = matrix;
+      const { a, b, c, d, e, f } = matrix;
+      el.setAttribute('transform', `matrix(${a} ${b} ${c} ${d} ${e} ${f})`);
+      el.style.transform = '';
+      el.style.transformOrigin = '';
     }
 
     function alignLimbToPuppet(rawArm, lengths) {
@@ -974,6 +1006,10 @@
           desiredAnchor = transformPoint(lastHeadMatrix || headMatrix, contourFallback[contourAnchorIndex]);
         }
         if (desiredAnchor) {
+          desiredAnchor = {
+            x: desiredAnchor.x + (FACE_ANCHOR_ADJUST.x ?? 0),
+            y: desiredAnchor.y + (FACE_ANCHOR_ADJUST.y ?? 0)
+          };
           const currentAnchorSource = contourFallback && contourAnchorIndex >= 0 ? contourFallback[contourAnchorIndex] : headAnchorBase;
           const currentAnchor = transformPoint(headMatrix, currentAnchorSource);
           if (currentAnchor) {
@@ -1064,9 +1100,19 @@
         placeLine(segments.body.left, shoulders.left, hips.left);
         placeLine(segments.body.right, shoulders.right, hips.right);
         placeLine(segments.body.center, centerTop, centerBottom);
+        const bodyMatrix = computeSimilarityTransform(PUPPET_BODY_BASE, [
+          shoulders.right,
+          shoulders.left,
+          hips.right,
+          hips.left
+        ]);
+        applyBodyTransform(bodyMatrix);
         neckBase = mid(shoulders.left, shoulders.right);
       } else if (LSh && RSh) {
         neckBase = toRig(mid(LSh, RSh), rig);
+        applyBodyTransform(null);
+      } else {
+        applyBodyTransform(null);
       }
 
       updateFaceGuides(kp, rig, { neck: neckBase });
@@ -1097,12 +1143,21 @@
         svgEl.style.width = '100%';
         svgEl.style.height = 'auto';
         headTargets = [];
+        bodyTargets = [];
         const headBase = svgEl.getElementById('puppet_head_base');
         const headFront = svgEl.getElementById('puppet_head_front');
         if (headBase) headTargets.push(headBase);
         if (headFront) headTargets.push(headFront);
         lastHeadMatrix = null;
+        lastBodyMatrix = null;
         lastRigMatrix = null;
+        lastArmMatrices.left.upper = null;
+        lastArmMatrices.left.lower = null;
+        lastArmMatrices.right.upper = null;
+        lastArmMatrices.right.lower = null;
+        const bodyGroup = svgEl.getElementById('puppet_body');
+        if (bodyGroup) bodyTargets.push(bodyGroup);
+        applyBodyTransform(null);
         faceOverlayLayer = svgEl.getElementById('face_overlay_layer');
         if (!faceOverlayLayer) {
           faceOverlayLayer = document.createElementNS(NS, 'g');
@@ -1334,6 +1389,9 @@
             if (!el) return;
             el.style.transformBox = 'fill-box';
             el.classList.add('joint');
+            el.removeAttribute('transform');
+            el.style.transform = '';
+            el.style.transformOrigin = '';
             if (el.parentNode) {
               el.parentNode.appendChild(el);
             }
