@@ -110,7 +110,7 @@
       y: PUPPET_LEFT_SH.y
     };
 
-    const DEBUG = new URLSearchParams(window.location.search).get('debug') !== '0';
+    const DEBUG_ARM = new URLSearchParams(window.location.search).get('debugArm') !== '0';
     const smooth = {};
 
     const EMA = (prev, cur, a = 0.35) => {
@@ -168,11 +168,47 @@
       rect.style.transform = `rotate(${ang}deg)`;
     }
 
-    function toggleDebugVisibility() {
-      if (armPath) armPath.style.display = DEBUG ? 'block' : 'none';
-      for (const rect of Object.values(segments)) {
-        rect.style.display = DEBUG ? 'none' : 'block';
+    function placeRigSegment(rect, start, end) {
+      if (!rect || !start || !end) return;
+      const len = dist(start, end);
+      const ang = angle(start, end);
+      rect.setAttribute('x', start.x - 9);
+      rect.setAttribute('y', start.y);
+      rect.setAttribute('width', 18);
+      rect.setAttribute('height', len);
+      rect.setAttribute('rx', 10);
+      rect.style.transformOrigin = '9px 0px';
+      rect.style.transform = `rotate(${ang}deg)`;
+    }
+
+    function clampAngle(prev, next) {
+      if (prev == null || Number.isNaN(prev)) return next;
+      let candidate = next;
+      let delta = candidate - prev;
+      while (delta > 180) {
+        candidate -= 360;
+        delta = candidate - prev;
       }
+      while (delta < -180) {
+        candidate += 360;
+        delta = candidate - prev;
+      }
+      return candidate;
+    }
+
+    function isDebugActive() {
+      return DEBUG_ARM || !puppetArmReady;
+    }
+
+    function updateVisibility() {
+      const showDebug = isDebugActive();
+      if (armPath) armPath.style.display = showDebug ? 'block' : 'none';
+      for (const rect of Object.values(segments)) {
+        if (!rect) continue;
+        rect.style.display = showDebug ? 'block' : 'none';
+      }
+      if (upperArmEl) upperArmEl.style.display = showDebug ? 'none' : '';
+      if (lowerArmEl) lowerArmEl.style.display = showDebug ? 'none' : '';
     }
 
     let frames = [];
@@ -181,6 +217,12 @@
     const segments = {};
     let armPath = null;
     let running = false;
+    let upperArmEl = null;
+    let lowerArmEl = null;
+    let puppetArmReady = false;
+    let puppetWarningShown = false;
+    let lastArmRig = null;
+    const lastArmAngles = { upper: null, lower: null };
 
     function seg(id) {
       const r = document.createElementNS(NS, 'rect');
@@ -192,6 +234,14 @@
       r.classList.add('joint');
       svgEl.appendChild(r);
       return r;
+    }
+
+    function rotatePuppetSegment(el, origin, target, key) {
+      if (!el || !origin || !target) return;
+      const ang = clampAngle(lastArmAngles[key], angle(origin, target));
+      lastArmAngles[key] = ang;
+      el.style.transformOrigin = `${origin.x}px ${origin.y}px`;
+      el.style.transform = `rotate(${ang}deg)`;
     }
 
     function tick() {
@@ -218,16 +268,37 @@
       const RE = safeKP(kp, 'rightElbow');
       const RW = safeKP(kp, 'rightWrist');
 
-      if (armPath && LSh && LE && LW) {
+      let currentArmRig = null;
+      if (LSh && LE && LW) {
         const A = toRig(LSh, rig);
         const B = toRig(LE, rig);
         const C = toRig(LW, rig);
+        currentArmRig = { A, B, C };
+        lastArmRig = currentArmRig;
+      } else if (lastArmRig) {
+        currentArmRig = lastArmRig;
+      }
+
+      if (currentArmRig && armPath) {
+        const { A, B, C } = currentArmRig;
         armPath.setAttribute('d', `M ${A.x} ${A.y} L ${B.x} ${B.y} L ${C.x} ${C.y}`);
       }
 
-      if (!DEBUG) {
-        placeSegment(segments.L_upper, LSh, LE, rig);
-        placeSegment(segments.L_lower, LE, LW, rig);
+      const showDebug = isDebugActive();
+
+      if (currentArmRig && showDebug) {
+        const { A, B, C } = currentArmRig;
+        placeRigSegment(segments.L_upper, A, B);
+        placeRigSegment(segments.L_lower, B, C);
+      }
+
+      if (currentArmRig && !showDebug && puppetArmReady) {
+        const { A, B, C } = currentArmRig;
+        rotatePuppetSegment(upperArmEl, A, B, 'upper');
+        rotatePuppetSegment(lowerArmEl, B, C, 'lower');
+      }
+
+      if (showDebug) {
         placeSegment(segments.R_upper, RSh, RE, rig);
         placeSegment(segments.R_lower, RE, RW, rig);
       }
@@ -271,7 +342,60 @@
         segments.L_lower = seg('L_lower');
         segments.R_upper = seg('R_upper');
         segments.R_lower = seg('R_lower');
-        toggleDebugVisibility();
+
+        const upperCandidates = [
+          'leftUpperArm',
+          'LeftUpperArm',
+          'left_upper_arm',
+          'Left_arm_upper',
+          'leftArmUpper',
+          'leftupperarm',
+          'leftArm_Upper'
+        ];
+        const lowerCandidates = [
+          'leftLowerArm',
+          'LeftLowerArm',
+          'left_lower_arm',
+          'Left_arm_lower',
+          'leftArmLower',
+          'leftlowerarm',
+          'leftArm_Lower'
+        ];
+
+        const findArmPart = (candidates) => {
+          for (const id of candidates) {
+            const el = svgEl.getElementById(id);
+            if (el) return el;
+          }
+          return null;
+        };
+
+        upperArmEl = findArmPart(upperCandidates);
+        lowerArmEl = findArmPart(lowerCandidates);
+        puppetArmReady = Boolean(upperArmEl && lowerArmEl);
+
+        if (!puppetArmReady && !puppetWarningShown) {
+          console.warn('Braço esquerdo do puppet não encontrado em boy.svg; mantendo modo debug.');
+          puppetWarningShown = true;
+        }
+
+        if (upperArmEl) {
+          upperArmEl.style.transformBox = 'fill-box';
+          upperArmEl.classList.add('joint');
+        }
+        if (lowerArmEl) {
+          lowerArmEl.style.transformBox = 'fill-box';
+          lowerArmEl.classList.add('joint');
+        }
+
+        if (upperArmEl && upperArmEl.parentNode) {
+          upperArmEl.parentNode.appendChild(upperArmEl);
+        }
+        if (lowerArmEl && lowerArmEl.parentNode) {
+          lowerArmEl.parentNode.appendChild(lowerArmEl);
+        }
+
+        updateVisibility();
         tryStart();
       })
       .catch((err) => {
