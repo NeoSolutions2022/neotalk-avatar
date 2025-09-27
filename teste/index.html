@@ -207,6 +207,12 @@
         if (!rect) continue;
         rect.style.display = showDebug ? 'block' : 'none';
       }
+      if (puppetOverlay.upper) {
+        puppetOverlay.upper.style.display = puppetArmReady ? 'none' : 'block';
+      }
+      if (puppetOverlay.lower) {
+        puppetOverlay.lower.style.display = puppetArmReady ? 'none' : 'block';
+      }
       if (upperArmEl) upperArmEl.style.display = showDebug ? 'none' : '';
       if (lowerArmEl) lowerArmEl.style.display = showDebug ? 'none' : '';
     }
@@ -223,6 +229,7 @@
     let puppetWarningShown = false;
     let lastArmRig = null;
     const lastArmAngles = { upper: null, lower: null };
+    const puppetOverlay = { upper: null, lower: null };
 
     function seg(id) {
       const r = document.createElementNS(NS, 'rect');
@@ -242,6 +249,14 @@
       lastArmAngles[key] = ang;
       el.style.transformOrigin = `${origin.x}px ${origin.y}px`;
       el.style.transform = `rotate(${ang}deg)`;
+    }
+
+    function placeOverlaySegment(line, from, to) {
+      if (!line || !from || !to) return;
+      line.setAttribute('x1', from.x);
+      line.setAttribute('y1', from.y);
+      line.setAttribute('x2', to.x);
+      line.setAttribute('y2', to.y);
     }
 
     function tick() {
@@ -285,6 +300,12 @@
       }
 
       const showDebug = isDebugActive();
+
+      if (currentArmRig) {
+        const { A, B, C } = currentArmRig;
+        placeOverlaySegment(puppetOverlay.upper, A, B);
+        placeOverlaySegment(puppetOverlay.lower, B, C);
+      }
 
       if (currentArmRig && showDebug) {
         const { A, B, C } = currentArmRig;
@@ -342,6 +363,24 @@
         segments.L_lower = seg('L_lower');
         segments.R_upper = seg('R_upper');
         segments.R_lower = seg('R_lower');
+
+        puppetOverlay.upper = document.createElementNS(NS, 'line');
+        puppetOverlay.upper.id = 'leftArmUpperOverlay';
+        puppetOverlay.upper.setAttribute('stroke', '#99AFB1');
+        puppetOverlay.upper.setAttribute('stroke-linecap', 'round');
+        puppetOverlay.upper.setAttribute('stroke-width', '46');
+        puppetOverlay.upper.setAttribute('opacity', '0.92');
+        puppetOverlay.upper.style.pointerEvents = 'none';
+        svgEl.appendChild(puppetOverlay.upper);
+
+        puppetOverlay.lower = document.createElementNS(NS, 'line');
+        puppetOverlay.lower.id = 'leftArmLowerOverlay';
+        puppetOverlay.lower.setAttribute('stroke', '#F3AF9D');
+        puppetOverlay.lower.setAttribute('stroke-linecap', 'round');
+        puppetOverlay.lower.setAttribute('stroke-width', '40');
+        puppetOverlay.lower.setAttribute('opacity', '0.96');
+        puppetOverlay.lower.style.pointerEvents = 'none';
+        svgEl.appendChild(puppetOverlay.lower);
 
         const upperCandidates = [
           'leftUpperArm',
