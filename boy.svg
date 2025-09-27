@@ -30,72 +30,77 @@
 		C151.6,333.4,155.6,326.2,155.6,326.2z"/>
 	<path style="fill:#F3AF9D;" d="M709.7,318.3c64.5,8.6,113.3,11.5,158.7,12.1s42.4-34.2,5.3-39.5c-37.1-5.3-114.5-11.5-162.2-14.2
 		L709.7,318.3z"/>
-	<path style="fill:#F3AF9D;" d="M489.5,211.9h20.9c0,0,4.3,67.3,5.7,90.8c-2.1,9.7-9.1,11.3-15.5,11.1c-8.2-0.2-15.9-4.7-17.1-12.5
-		L489.5,211.9z"/>
-	<path style="fill:#DD9B8E;" d="M489.5,211.9h20.9c1.9,19-21.6,89.4-26.8,89.4L489.5,211.9z"/>
-	<path style="fill:#72605A;" d="M499,113c-27,0-89,8-56,64c24.8,42.1,88,44,110,3S549,113,499,113z"/>
-	<circle style="fill:#DF7977;" cx="560.2" cy="182.8" r="12.1"/>
-	<circle style="fill:#DF7977;" cx="437.6" cy="182.8" r="12.1"/>
-	<ellipse style="fill:#F3AF9D;" cx="499.8" cy="177.4" rx="57" ry="57.6"/>
-        <g id="template_mouth">
-                <path style="fill:#DF7977;stroke:#DF7977;stroke-width:2;stroke-miterlimit:10;" d="M488,210.1c0,0,7.7-0.1,11.3-0.1
-                        s11.9-0.1,11.9-0.1s-6.9,2.6-11.9,2.6C494.2,212.5,488,210.1,488,210.1z"/>
+        <g id="puppet_head_base">
+                <path style="fill:#F3AF9D;" d="M489.5,211.9h20.9c0,0,4.3,67.3,5.7,90.8c-2.1,9.7-9.1,11.3-15.5,11.1c-8.2-0.2-15.9-4.7-17.1-12.5
+                        L489.5,211.9z"/>
+                <path style="fill:#DD9B8E;" d="M489.5,211.9h20.9c1.9,19-21.6,89.4-26.8,89.4L489.5,211.9z"/>
+                <path style="fill:#72605A;" d="M499,113c-27,0-89,8-56,64c24.8,42.1,88,44,110,3S549,113,499,113z"/>
+                <circle style="fill:#DF7977;" cx="560.2" cy="182.8" r="12.1"/>
+                <circle style="fill:#DF7977;" cx="437.6" cy="182.8" r="12.1"/>
+                <ellipse style="fill:#F3AF9D;" cx="499.8" cy="177.4" rx="57" ry="57.6"/>
         </g>
-        <path id="rightMiddleLip_2_" d="M487.5,209.6c0.3,0,0.5,0.3,0.5,0.5s-0.3,0.5-0.5,0.5c-0.3,0-0.5-0.3-0.5-0.5
-                        S487.3,209.6,487.5,209.6z"/>
-        <circle id="upperLipBottomMid_1_" cx="499.3" cy="209.9" r="0.5"/>
-        <circle id="rightUpperLipBottom1_1_" cx="496.8" cy="209.6" r="0.5"/>
-        <path id="leftMiddleLip_2_" d="M511.1,209.6c0.3,0,0.5,0.3,0.5,0.5s-0.3,0.5-0.5,0.5s-0.5-0.3-0.5-0.5S510.8,209.6,511.1,209.6z"
-                        />
-        <circle id="leftUpperLipBottom1_1_" cx="501.8" cy="209.6" r="0.5"/>
-        <circle id="lowerLipTopMid_2_" cx="499.3" cy="211.9" r="0.5"/>
-        <circle id="rightLowerLipTop0_2_" cx="496.8" cy="211.4" r="0.5"/>
-        <circle id="leftLowerLipTop0_2_" cx="501.8" cy="211.4" r="0.5"/>
-        <g id="template_eye_right">
-                <ellipse style="fill:#DF7977;" cx="464.1" cy="196.5" rx="7.8" ry="6.2"/>
-                <ellipse style="fill:#2C323A;" cx="464" cy="180.6" rx="3.6" ry="5.8"/>
+        <g id="face_templates" style="display:none;">
+                <g id="template_mouth">
+                        <path style="fill:#DF7977;stroke:#DF7977;stroke-width:2;stroke-miterlimit:10;" d="M488,210.1c0,0,7.7-0.1,11.3-0.1
+                                s11.9-0.1,11.9-0.1s-6.9,2.6-11.9,2.6C494.2,212.5,488,210.1,488,210.1z"/>
+                </g>
+                <path id="rightMiddleLip_2_" d="M487.5,209.6c0.3,0,0.5,0.3,0.5,0.5s-0.3,0.5-0.5,0.5c-0.3,0-0.5-0.3-0.5-0.5
+                                S487.3,209.6,487.5,209.6z"/>
+                <circle id="upperLipBottomMid_1_" cx="499.3" cy="209.9" r="0.5"/>
+                <circle id="rightUpperLipBottom1_1_" cx="496.8" cy="209.6" r="0.5"/>
+                <path id="leftMiddleLip_2_" d="M511.1,209.6c0.3,0,0.5,0.3,0.5,0.5s-0.3,0.5-0.5,0.5s-0.5-0.3-0.5-0.5S510.8,209.6,511.1,209.6z"
+                                />
+                <circle id="leftUpperLipBottom1_1_" cx="501.8" cy="209.6" r="0.5"/>
+                <circle id="lowerLipTopMid_2_" cx="499.3" cy="211.9" r="0.5"/>
+                <circle id="rightLowerLipTop0_2_" cx="496.8" cy="211.4" r="0.5"/>
+                <circle id="leftLowerLipTop0_2_" cx="501.8" cy="211.4" r="0.5"/>
+                <g id="template_eye_right">
+                        <ellipse style="fill:#DF7977;" cx="464.1" cy="196.5" rx="7.8" ry="6.2"/>
+                        <ellipse style="fill:#2C323A;" cx="464" cy="180.6" rx="3.6" ry="5.8"/>
+                </g>
+                <circle id="rightEye0_1_" cx="468.6" cy="160.2" r="0.8"/>
+                <circle id="rightEye1_1_" cx="473.8" cy="156.5" r="0.8"/>
+                <circle id="rightEye5_1_" cx="473.8" cy="162.5" r="0.8"/>
+                <circle id="rightEye2_1_" cx="480.1" cy="156.5" r="0.8"/>
+                <circle id="rightEye3_1_" cx="485.3" cy="160.7" r="0.8"/>
+                <circle id="rightEye4_1_" cx="480.1" cy="161.7" r="0.8"/>
+                <g id="template_eye_left">
+                        <ellipse style="fill:#2C323A;" cx="532.8" cy="179.6" rx="3.6" ry="5.8"/>
+                        <ellipse style="fill:#DF7977;" cx="533.2" cy="196.5" rx="7.8" ry="6.2"/>
+                </g>
+                <circle id="leftEye0_1_" cx="528.2" cy="160.2" r="0.8"/>
+                <circle id="leftEye1_1_" cx="523" cy="156.5" r="0.8"/>
+                <circle id="leftEye5_1_" cx="523" cy="162.5" r="0.8"/>
+                <circle id="leftEye2_1_" cx="516.7" cy="156.5" r="0.8"/>
+                <circle id="leftEye3_1_" cx="511.5" cy="160.7" r="0.8"/>
+                <circle id="leftEye4_1_" cx="516.7" cy="161.7" r="0.8"/>
+                <path id="template_brow_left" style="fill:#2C323A;" d="M518.8,159.9c10.7-5,14.2-5,19.2,0.7C533,159.9,532.3,163.4,518.8,159.9z"/>
+                <circle id="leftBrow1_1_" cx="530.1" cy="148.7" r="0.8"/>
+                <circle id="leftBrow4_1_" cx="506.5" cy="150.8" r="0.8"/>
+                <circle id="leftBrow3_1_" cx="516.5" cy="147.6" r="0.8"/>
+                <circle id="leftBrow0_1_" cx="534.1" cy="151.6" r="0.8"/>
+                <circle id="leftBrow2_1_" cx="523.8" cy="147.2" r="0.8"/>
+                <path id="template_brow_right" style="fill:#2C323A;" d="M478,159.9c-10.7-5-14.2-5-19.2,0.7C463.8,159.9,464.5,163.4,478,159.9z"/>
+                <circle id="rightBrow1_1_" cx="466.4" cy="148.3" r="0.8"/>
+                <circle id="rightBrow4_1_" cx="489.7" cy="151.3" r="0.8"/>
+                <circle id="rightBrow3_1_" cx="479.9" cy="147.3" r="0.8"/>
+                <circle id="rightBrow0_1_" cx="462.4" cy="152" r="0.8"/>
+                <circle id="rightBrow2_1_" cx="472.6" cy="147.3" r="0.8"/>
+                <path id="template_nose" style="fill:#2C323A;stroke:#2C323A;stroke-width:2;stroke-miterlimit:10;" d="M496.4,185.8c-1.2,0-4.6,1.6-5.8,5.2
+                                c-0.2,1.2,0.6,5.8,6,4.1c-0.1-1-4.7-1.1-4.5-3.7C492.4,189.6,494.1,189.6,496.4,185.8z"/>
+                <circle id="nose1_1_" cx="497.6" cy="161.2" r="0.8"/>
+                <circle id="nose0_1_" cx="497.6" cy="155.4" r="0.8"/>
+                <circle id="nose3_1_" cx="497.6" cy="173.8" r="0.8"/>
+                <circle id="rightNose0_1_" cx="486.9" cy="178.3" r="0.8"/>
+                <circle id="rightNose1_1_" cx="492.1" cy="178.3" r="0.8"/>
+                <circle id="nose2_1_" cx="497.6" cy="166.7" r="0.8"/>
+                <circle id="nose4_1_" cx="497.6" cy="179.1" r="0.8"/>
+                <circle id="leftNose0_1_" cx="508" cy="178.3" r="0.8"/>
+                <circle id="leftNose1_1_" cx="503.2" cy="178.3" r="0.8"/>
         </g>
-        <circle id="rightEye0_1_" cx="468.6" cy="160.2" r="0.8"/>
-        <circle id="rightEye1_1_" cx="473.8" cy="156.5" r="0.8"/>
-        <circle id="rightEye5_1_" cx="473.8" cy="162.5" r="0.8"/>
-        <circle id="rightEye2_1_" cx="480.1" cy="156.5" r="0.8"/>
-        <circle id="rightEye3_1_" cx="485.3" cy="160.7" r="0.8"/>
-        <circle id="rightEye4_1_" cx="480.1" cy="161.7" r="0.8"/>
-        <g id="template_eye_left">
-                <ellipse style="fill:#2C323A;" cx="532.8" cy="179.6" rx="3.6" ry="5.8"/>
-                <ellipse style="fill:#DF7977;" cx="533.2" cy="196.5" rx="7.8" ry="6.2"/>
-        </g>
-        <circle id="leftEye0_1_" cx="528.2" cy="160.2" r="0.8"/>
-        <circle id="leftEye1_1_" cx="523" cy="156.5" r="0.8"/>
-        <circle id="leftEye5_1_" cx="523" cy="162.5" r="0.8"/>
-        <circle id="leftEye2_1_" cx="516.7" cy="156.5" r="0.8"/>
-        <circle id="leftEye3_1_" cx="511.5" cy="160.7" r="0.8"/>
-        <circle id="leftEye4_1_" cx="516.7" cy="161.7" r="0.8"/>
-        <path id="template_brow_left" style="fill:#2C323A;" d="M518.8,159.9c10.7-5,14.2-5,19.2,0.7C533,159.9,532.3,163.4,518.8,159.9z"/>
-        <circle id="leftBrow1_1_" cx="530.1" cy="148.7" r="0.8"/>
-        <circle id="leftBrow4_1_" cx="506.5" cy="150.8" r="0.8"/>
-        <circle id="leftBrow3_1_" cx="516.5" cy="147.6" r="0.8"/>
-        <circle id="leftBrow0_1_" cx="534.1" cy="151.6" r="0.8"/>
-        <circle id="leftBrow2_1_" cx="523.8" cy="147.2" r="0.8"/>
-        <path id="template_brow_right" style="fill:#2C323A;" d="M478,159.9c-10.7-5-14.2-5-19.2,0.7C463.8,159.9,464.5,163.4,478,159.9z"/>
-        <circle id="rightBrow1_1_" cx="466.4" cy="148.3" r="0.8"/>
-        <circle id="rightBrow4_1_" cx="489.7" cy="151.3" r="0.8"/>
-        <circle id="rightBrow3_1_" cx="479.9" cy="147.3" r="0.8"/>
-        <circle id="rightBrow0_1_" cx="462.4" cy="152" r="0.8"/>
-        <circle id="rightBrow2_1_" cx="472.6" cy="147.3" r="0.8"/>
-	<path style="fill:#72605A;" d="M456,138c1.9,7.7,62.3,20.7,82-3c10-12,9-22,4-25c-4.4-2.6-9-6-22,6c-1-9,1-15-16-17
-		C476.2,95.7,451.6,120,456,138z"/>
-        <path id="template_nose" style="fill:#2C323A;stroke:#2C323A;stroke-width:2;stroke-miterlimit:10;" d="M496.4,185.8c-1.2,0-4.6,1.6-5.8,5.2
-                        c-0.2,1.2,0.6,5.8,6,4.1c-0.1-1-4.7-1.1-4.5-3.7C492.4,189.6,494.1,189.6,496.4,185.8z"/>
-        <circle id="nose1_1_" cx="497.6" cy="161.2" r="0.8"/>
-        <circle id="nose0_1_" cx="497.6" cy="155.4" r="0.8"/>
-        <circle id="nose3_1_" cx="497.6" cy="173.8" r="0.8"/>
-        <circle id="rightNose0_1_" cx="486.9" cy="178.3" r="0.8"/>
-        <circle id="rightNose1_1_" cx="492.1" cy="178.3" r="0.8"/>
-        <circle id="nose2_1_" cx="497.6" cy="166.7" r="0.8"/>
-        <circle id="nose4_1_" cx="497.6" cy="179.1" r="0.8"/>
-        <circle id="leftNose0_1_" cx="508" cy="178.3" r="0.8"/>
-        <circle id="leftNose1_1_" cx="503.2" cy="178.3" r="0.8"/>
+        <g id="face_overlay_layer"></g>
+        <path id="puppet_head_front" style="fill:#72605A;" d="M456,138c1.9,7.7,62.3,20.7,82-3c10-12,9-22,4-25c-4.4-2.6-9-6-22,6c-1-9,1-15-16-17
+                C476.2,95.7,451.6,120,456,138z"/>
 </g>
 <g id="skeleton_1_">
 	<circle id="rightShoulder" cx="392.8" cy="294.3" r="8.2"/>

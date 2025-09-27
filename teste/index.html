@@ -184,6 +184,10 @@
       body: true,
       face: true
     };
+    let faceOverlayLayer = null;
+    let headTargets = [];
+    let lastHeadMatrix = null;
+    let lastRigMatrix = null;
 
     const EMA = (prev, cur, a = 0.35) => {
       if (!prev) return cur;
@@ -206,22 +210,24 @@
     function rigFromPose(kp) {
       const LSh = safeKP(kp, 'leftShoulder');
       const RSh = safeKP(kp, 'rightShoulder');
-      const LH = safeKP(kp, 'leftHip');
-      const RH = safeKP(kp, 'rightHip');
-      if (!LSh || !RSh || !LH || !RH) return null;
-      const poseSpan = dist(LSh, RSh);
-      if (!poseSpan) return null;
-      return {
-        scale: PUPPET_SHOULDER_SPAN / poseSpan,
-        origin: mid(LSh, RSh),
-        offset: PUPPET_SHOULDERS_MID
-      };
+      if (!LSh || !RSh) return lastRigMatrix;
+      const matrix = computeSimilarityTransform(
+        [RSh, LSh],
+        [PUPPET_RIGHT_SH, PUPPET_LEFT_SH]
+      );
+      if (!matrix) return lastRigMatrix;
+      lastRigMatrix = matrix;
+      return matrix;
     }
 
-    const toRig = (p, rig) => ({
-      x: rig.offset.x + (p.x - rig.origin.x) * rig.scale,
-      y: rig.offset.y + (p.y - rig.origin.y) * rig.scale
-    });
+    const toRig = (p, rig) => {
+      if (!rig || !p) return null;
+      const { a, b, c, d, e, f } = rig;
+      return {
+        x: a * p.x + c * p.y + e,
+        y: b * p.x + d * p.y + f
+      };
+    };
 
     function placeLine(line, start, end) {
       if (!line || !start || !end) return;
@@ -329,6 +335,28 @@
       if (!matrix) return;
       const { a, b, c, d, e, f } = matrix;
       element.setAttribute('transform', `matrix(${a} ${b} ${c} ${d} ${e} ${f})`);
+    }
+
+    function applyHeadTransform(matrix) {
+      if (!headTargets.length) return;
+      if (matrix) {
+        const { a, b, c, d, e, f } = matrix;
+        for (const target of headTargets) {
+          if (target) target.setAttribute('transform', `matrix(${a} ${b} ${c} ${d} ${e} ${f})`);
+        }
+        lastHeadMatrix = { a, b, c, d, e, f };
+        return;
+      }
+      if (lastHeadMatrix) {
+        const { a, b, c, d, e, f } = lastHeadMatrix;
+        for (const target of headTargets) {
+          if (target) target.setAttribute('transform', `matrix(${a} ${b} ${c} ${d} ${e} ${f})`);
+        }
+        return;
+      }
+      for (const target of headTargets) {
+        if (target) target.removeAttribute('transform');
+      }
     }
 
     function clampAngle(prev, next) {
@@ -476,6 +504,8 @@
         clone.setAttribute('id', id);
         clone.removeAttribute('transform');
         clone.style.pointerEvents = 'none';
+        clone.style.opacity = '';
+        clone.removeAttribute('opacity');
         clone.dataset.faceTemplate = templateId;
         if (!template.dataset.faceTemplateHidden) {
           template.dataset.faceTemplateHidden = 'true';
@@ -483,7 +513,11 @@
           template.setAttribute('opacity', '0');
           template.style.pointerEvents = 'none';
         }
-        template.parentNode.insertBefore(clone, template.nextSibling);
+        if (faceOverlayLayer && faceOverlayLayer.parentNode) {
+          faceOverlayLayer.appendChild(clone);
+        } else {
+          template.parentNode.insertBefore(clone, template.nextSibling);
+        }
         return clone;
       }
 
@@ -658,8 +692,9 @@
 
     function updateFaceGuides(kp, rig) {
       if (!rig || !segments.face.length) return;
+      let headMatrix = null;
       for (const segment of segments.face) {
-        const { debug, feature, ids, fallback, templateId, base } = segment;
+        const { debug, feature, ids, fallback, templateId, templateBasis, isContour } = segment;
         const points = [];
         for (let i = 0; i < ids.length; i += 1) {
           const id = ids[i];
@@ -683,14 +718,19 @@
           target = fallback;
         }
 
+        if (isContour && !headMatrix && fallback && target && fallback.length && target.length) {
+          headMatrix = computeSimilarityTransform(fallback, target);
+        }
+
         if (!feature || !target) continue;
         if (templateId) {
-          const basis = base || fallback;
+          const basis = templateBasis || fallback;
           if (basis) applyFaceTemplateTransform(feature, basis, target);
         } else if (feature.tagName === 'polyline') {
           placePolyline(feature, target);
         }
       }
+      applyHeadTransform(headMatrix);
     }
 
     function tick() {
@@ -798,6 +838,26 @@
         svgEl.setAttribute('preserveAspectRatio', 'xMidYMid meet');
         svgEl.style.width = '100%';
         svgEl.style.height = 'auto';
+        headTargets = [];
+        const headBase = svgEl.getElementById('puppet_head_base');
+        const headFront = svgEl.getElementById('puppet_head_front');
+        if (headBase) headTargets.push(headBase);
+        if (headFront) headTargets.push(headFront);
+        lastHeadMatrix = null;
+        lastRigMatrix = null;
+        faceOverlayLayer = svgEl.getElementById('face_overlay_layer');
+        if (!faceOverlayLayer) {
+          faceOverlayLayer = document.createElementNS(NS, 'g');
+          faceOverlayLayer.id = 'face_overlay_layer';
+          if (headFront && headFront.parentNode) {
+            headFront.parentNode.insertBefore(faceOverlayLayer, headFront);
+          } else if (headBase && headBase.parentNode) {
+            headBase.parentNode.insertBefore(faceOverlayLayer, headBase.nextSibling);
+          } else {
+            svgEl.appendChild(faceOverlayLayer);
+          }
+        }
+        faceOverlayLayer.style.pointerEvents = 'none';
         const skel = svgEl.getElementById('skeleton_1_');
         if (skel) skel.style.display = 'none';
         armPaths.left = document.createElementNS(NS, 'path');
@@ -830,6 +890,7 @@
         const faceGuides = [
           {
             id: 'face_contour',
+            isContour: true,
             ids: [
               'topMid', 'rightTop0', 'rightTop1', 'rightJaw0', 'rightJaw1', 'rightJaw2',
               'rightJaw3', 'rightJaw4', 'rightJaw5', 'rightJaw6', 'rightJaw7', 'jawMid',
@@ -893,12 +954,14 @@
 
         for (const guide of faceGuides) {
           const debug = faceGuide(guide.id, '#4a8bff', guide.width ?? 6);
-          const fallback = setPolylinePoints(debug, guide.ids);
-          if (!fallback) {
+          const fallbackPoints = setPolylinePoints(debug, guide.ids);
+          if (!fallbackPoints) {
             console.warn(`Não foi possível construir a linha de rosto ${guide.id}`);
             debug.remove();
             continue;
           }
+          const fallback = fallbackPoints.map((pt) => ({ x: pt.x, y: pt.y }));
+          placePolyline(debug, fallback);
           let feature = null;
           const templateId = guide.feature?.templateId ?? null;
           if (guide.feature) {
@@ -907,8 +970,16 @@
               placePolyline(feature, fallback);
             }
           }
-          const base = templateId ? fallback.map((pt) => ({ x: pt.x, y: pt.y })) : null;
-          segments.face.push({ debug, feature, ids: guide.ids, fallback, templateId, base });
+          const templateBasis = templateId ? fallback.map((pt) => ({ x: pt.x, y: pt.y })) : null;
+          segments.face.push({
+            debug,
+            feature,
+            ids: guide.ids,
+            fallback,
+            templateId,
+            templateBasis,
+            isContour: Boolean(guide.isContour)
+          });
         }
 
         puppetOverlays.left.upper = document.createElementNS(NS, 'line');
