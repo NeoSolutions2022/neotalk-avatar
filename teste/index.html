@@ -4,7 +4,10 @@
   <meta charset="UTF-8" />
   <title>Avatar por pose</title>
   <style>
-    * { box-sizing: border-box; }
+    * {
+      box-sizing: border-box;
+    }
+
     body {
       margin: 0;
       min-height: 100vh;
@@ -12,57 +15,55 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
+      gap: 1rem;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: radial-gradient(circle at 25% 25%, #ffffff 0, #f6f8fc 45%, #e6ecfb 100%);
       color: #1f2a44;
     }
+
     h1 {
       font-size: 1.6rem;
-      margin-bottom: 0.25rem;
+      margin: 0;
     }
+
     #info {
       font-size: 0.95rem;
-      margin-bottom: 1.5rem;
       opacity: 0.75;
     }
+
     main {
+      width: min(560px, 92vw);
       position: relative;
-      width: min(520px, 90vw);
       display: flex;
       justify-content: center;
       align-items: center;
     }
-    svg {
+
+    #stage {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.6);
+      border-radius: 16px;
+      box-shadow: 0 12px 32px rgba(30, 70, 140, 0.12);
+      padding: clamp(12px, 3vw, 28px);
+    }
+
+    #stage svg {
       width: 100%;
       height: auto;
-      max-height: 620px;
+      display: block;
     }
+
     .joint {
       transform-box: fill-box;
       transform-origin: center;
       transition: transform 60ms linear;
     }
-    .limb {
-      rx: 12px;
-      fill: #6aa9ff;
-      filter: drop-shadow(0 2px 6px rgba(46, 79, 143, 0.15));
+
+    #L_upper,
+    #L_lower {
+      filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.15));
     }
-    #head {
-      fill: #ffd1a9;
-      filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.25));
-    }
-    #torso {
-      fill: #6aa9ff;
-      filter: drop-shadow(0 3px 8px rgba(30, 60, 114, 0.2));
-    }
-    #boy-reference {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: auto;
-      opacity: 0.12;
-      pointer-events: none;
-    }
+
     #error {
       position: fixed;
       bottom: 1.2rem;
@@ -83,128 +84,172 @@
   <h1>Avatar 2D animado por <code>.pose</code></h1>
   <div id="info">Animando a partir de <code>pose_frames.json</code></div>
   <main>
-    <img id="boy-reference" src="../boy.svg" alt="Referência do avatar" />
-    <svg viewBox="0 0 600 800" role="img" aria-label="Avatar simplificado animado">
-      <rect id="torso" class="joint" x="290" y="260" width="24" height="220" rx="12" />
-      <circle id="head" class="joint" cx="302" cy="200" r="52" />
-      <rect id="lu" class="joint limb" x="250" y="260" width="24" height="140" />
-      <rect id="ll" class="joint limb" x="240" y="380" width="24" height="140" />
-      <rect id="ru" class="joint limb" x="330" y="260" width="24" height="140" />
-      <rect id="rl" class="joint limb" x="340" y="380" width="24" height="140" />
-    </svg>
+    <div id="stage" aria-live="polite"></div>
   </main>
   <div id="error" role="alert"></div>
   <script>
-    const angle = (a, b) => Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
-    const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+    const stage = document.getElementById('stage');
+    const errorBox = document.getElementById('error');
+    const NS = 'http://www.w3.org/2000/svg';
 
     const showError = (msg) => {
-      const box = document.getElementById('error');
-      box.textContent = msg;
-      box.style.display = 'block';
+      errorBox.textContent = msg;
+      errorBox.style.display = 'block';
     };
 
-    const requiredKeys = [
-      'leftShoulder', 'rightShoulder',
-      'leftElbow', 'rightElbow',
-      'leftWrist', 'rightWrist',
-      'leftHip', 'rightHip'
-    ];
+    const EMA = (prev, cur, a = 0.35) => (prev == null ? cur : {
+      x: prev.x + a * (cur.x - prev.x),
+      y: prev.y + a * (cur.y - prev.y)
+    });
 
-    const elements = {
-      head: document.getElementById('head'),
-      torso: document.getElementById('torso'),
-      lu: document.getElementById('lu'),
-      ll: document.getElementById('ll'),
-      ru: document.getElementById('ru'),
-      rl: document.getElementById('rl')
+    let smooth = {};
+    function safeKP(kp, name) {
+      const prev = smooth[name] ?? null;
+      const raw = kp[name] ?? prev;
+      if (!raw) return null;
+      const next = EMA(prev, raw);
+      smooth[name] = next;
+      return next;
+    }
+
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    const angle = (a, b) => Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+
+    const PUPPET_LEFT_SH = { x: 605.7, y: 294.3 };
+    const PUPPET_RIGHT_SH = { x: 392.8, y: 294.3 };
+    const PUPPET_SHOULDER_SPAN = PUPPET_LEFT_SH.x - PUPPET_RIGHT_SH.x;
+    const PUPPET_SHOULDERS_MID = {
+      x: (PUPPET_LEFT_SH.x + PUPPET_RIGHT_SH.x) / 2,
+      y: PUPPET_LEFT_SH.y
     };
+
+    function rigFromPose(kp) {
+      const LSh = safeKP(kp, 'leftShoulder');
+      const RSh = safeKP(kp, 'rightShoulder');
+      const LH = safeKP(kp, 'leftHip');
+      const RH = safeKP(kp, 'rightHip');
+      if (!LSh || !RSh || !LH || !RH) return null;
+      const poseSpan = dist(LSh, RSh);
+      if (!poseSpan) return null;
+      const scale = PUPPET_SHOULDER_SPAN / poseSpan;
+      return {
+        scale,
+        origin: { x: (LSh.x + RSh.x) / 2, y: (LSh.y + RSh.y) / 2 },
+        offset: PUPPET_SHOULDERS_MID,
+        rot: 0
+      };
+    }
+
+    function toRig(p, rig) {
+      const x0 = p.x - rig.origin.x;
+      const y0 = p.y - rig.origin.y;
+      return {
+        x: rig.offset.x + x0 * rig.scale,
+        y: rig.offset.y + y0 * rig.scale
+      };
+    }
+
+    function placeSegment(rect, a, b, rig) {
+      if (!rect || !a || !b) return;
+      const A = toRig(a, rig);
+      const B = toRig(b, rig);
+      const len = dist(A, B);
+      const ang = angle(A, B);
+      rect.classList.add('joint');
+      rect.setAttribute('x', A.x - 9);
+      rect.setAttribute('y', A.y);
+      rect.setAttribute('width', 18);
+      rect.setAttribute('height', len);
+      rect.setAttribute('rx', 10);
+      rect.style.transformOrigin = '9px 0px';
+      rect.style.transform = `rotate(${ang}deg)`;
+    }
 
     let frames = [];
     let frameIndex = 0;
+    let svgEl = null;
+    let L_upper = null;
+    let L_lower = null;
+    let running = false;
 
-    function applyFrame(frame) {
-      const kp = frame.keypoints;
-
-      if (!kp) {
-        showError('Frame inválido: não há propriedade "keypoints".');
-        return;
-      }
-
-      const missing = requiredKeys.filter((key) => !kp[key]);
-      if (missing.length) {
-        showError(`Frame inválido: faltam pontos ${missing.join(', ')}.`);
-        return;
-      }
-
-      const LSh = kp.leftShoulder;
-      const RSh = kp.rightShoulder;
-      const LE = kp.leftElbow;
-      const RE = kp.rightElbow;
-      const LW = kp.leftWrist;
-      const RW = kp.rightWrist;
-      const LH = kp.leftHip;
-      const RH = kp.rightHip;
-
-      const shouldersMid = mid(LSh, RSh);
-      const hipsMid = mid(LH, RH);
-
-      const headY = shouldersMid.y - 60;
-      elements.head.setAttribute('cx', shouldersMid.x);
-      elements.head.setAttribute('cy', headY);
-
-      const torsoAngle = angle(shouldersMid, hipsMid);
-      elements.torso.setAttribute('x', shouldersMid.x - 12);
-      elements.torso.setAttribute('y', shouldersMid.y + 8);
-      elements.torso.style.transformOrigin = '12px 0px';
-      elements.torso.style.transform = `rotate(${torsoAngle}deg)`;
-
-      const angLU = angle(LSh, LE);
-      elements.lu.setAttribute('x', LSh.x - 12);
-      elements.lu.setAttribute('y', LSh.y);
-      elements.lu.style.transformOrigin = '12px 0px';
-      elements.lu.style.transform = `rotate(${angLU}deg)`;
-
-      const angLL = angle(LE, LW);
-      elements.ll.setAttribute('x', LE.x - 12);
-      elements.ll.setAttribute('y', LE.y);
-      elements.ll.style.transformOrigin = '12px 0px';
-      elements.ll.style.transform = `rotate(${angLL}deg)`;
-
-      const angRU = angle(RSh, RE);
-      elements.ru.setAttribute('x', RSh.x - 12);
-      elements.ru.setAttribute('y', RSh.y);
-      elements.ru.style.transformOrigin = '12px 0px';
-      elements.ru.style.transform = `rotate(${angRU}deg)`;
-
-      const angRL = angle(RE, RW);
-      elements.rl.setAttribute('x', RE.x - 12);
-      elements.rl.setAttribute('y', RE.y);
-      elements.rl.style.transformOrigin = '12px 0px';
-      elements.rl.style.transform = `rotate(${angRL}deg)`;
+    function seg(id) {
+      const r = document.createElementNS(NS, 'rect');
+      r.id = id;
+      r.setAttribute('width', '18');
+      r.setAttribute('height', '120');
+      r.setAttribute('rx', '10');
+      r.setAttribute('fill', '#4a8bff');
+      r.classList.add('joint');
+      svgEl.appendChild(r);
+      return r;
     }
 
     function tick() {
       if (!frames.length) return;
-      applyFrame(frames[frameIndex]);
+      const frame = frames[frameIndex];
+      const kp = frame?.keypoints;
+      if (!kp) {
+        frameIndex = (frameIndex + 1) % frames.length;
+        requestAnimationFrame(tick);
+        return;
+      }
+
+      const rig = rigFromPose(kp);
+      if (rig) {
+        const LSh = safeKP(kp, 'leftShoulder');
+        const LE = safeKP(kp, 'leftElbow');
+        const LW = safeKP(kp, 'leftWrist');
+        if (LSh && LE) placeSegment(L_upper, LSh, LE, rig);
+        if (LE && LW) placeSegment(L_lower, LE, LW, rig);
+      }
+
       frameIndex = (frameIndex + 1) % frames.length;
       requestAnimationFrame(tick);
     }
 
+    function tryStart() {
+      if (!running && svgEl && frames.length) {
+        running = true;
+        requestAnimationFrame(tick);
+      }
+    }
+
+    fetch('../boy.svg')
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status} ao carregar boy.svg`);
+        return res.text();
+      })
+      .then((svgMarkup) => {
+        stage.innerHTML = svgMarkup;
+        svgEl = stage.querySelector('svg');
+        if (!svgEl) throw new Error('boy.svg não possui elemento <svg>');
+        svgEl.removeAttribute('width');
+        svgEl.removeAttribute('height');
+        svgEl.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+        svgEl.style.width = '100%';
+        svgEl.style.height = 'auto';
+        const skel = svgEl.getElementById('skeleton_1_');
+        if (skel) skel.style.display = 'none';
+        L_upper = seg('L_upper');
+        L_lower = seg('L_lower');
+        tryStart();
+      })
+      .catch((err) => {
+        console.error(err);
+        showError('Erro ao carregar boy.svg: ' + err.message);
+      });
+
     fetch('pose_frames.json')
       .then((res) => {
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status} ao carregar pose_frames.json`);
-        }
+        if (!res.ok) throw new Error(`HTTP ${res.status} ao carregar pose_frames.json`);
         return res.json();
       })
       .then((data) => {
         if (!Array.isArray(data) || !data.length) {
-          showError('Arquivo pose_frames.json vazio ou inválido.');
-          return;
+          throw new Error('Arquivo pose_frames.json vazio ou inválido.');
         }
         frames = data;
-        requestAnimationFrame(tick);
+        tryStart();
       })
       .catch((err) => {
         console.error(err);
