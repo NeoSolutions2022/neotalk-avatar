@@ -110,39 +110,30 @@
       y: PUPPET_LEFT_SH.y
     };
 
-    const DEBUG_ARM = new URLSearchParams(window.location.search).get('debugArm') !== '0';
-    const smooth = {};
-
-    const EMA = (prev, cur, a = 0.35) => {
-      if (!prev) return cur;
-      return {
-        x: prev.x + a * (cur.x - prev.x),
-        y: prev.y + a * (cur.y - prev.y)
-      };
-    };
+    const DEBUG_ARM = (() => {
+      const param = new URLSearchParams(window.location.search).get('debugArm');
+      if (param === '1' || param === 'true') return true;
+      if (param === '0' || param === 'false') return false;
+      return false;
+    })();
 
     const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 
-    function safeKP(kp, name) {
-      const prev = smooth[name] ?? null;
-      const raw = kp?.[name] ?? null;
-      let next = null;
-      if (raw && prev) next = EMA(prev, raw);
-      else next = raw || prev || null;
-      smooth[name] = next;
-      return next;
-    }
+    let rigMetricsLogged = false;
 
     function rigFromPose(kp) {
-      const LSh = safeKP(kp, 'leftShoulder');
-      const RSh = safeKP(kp, 'rightShoulder');
-      const LH = safeKP(kp, 'leftHip');
-      const RH = safeKP(kp, 'rightHip');
-      if (!LSh || !RSh || !LH || !RH) return null;
+      const LSh = kp?.leftShoulder ?? null;
+      const RSh = kp?.rightShoulder ?? null;
+      if (!LSh || !RSh) return null;
       const poseSpan = dist(LSh, RSh);
       if (!poseSpan) return null;
+      const scale = PUPPET_SHOULDER_SPAN / poseSpan;
+      if (!rigMetricsLogged) {
+        console.log(`[arm] Medidas do rig: shoulderSpanPose=${poseSpan.toFixed(2)}, shoulderSpanPuppet=${PUPPET_SHOULDER_SPAN.toFixed(2)}, scale=${scale.toFixed(4)}`);
+        rigMetricsLogged = true;
+      }
       return {
-        scale: PUPPET_SHOULDER_SPAN / poseSpan,
+        scale,
         origin: mid(LSh, RSh),
         offset: PUPPET_SHOULDERS_MID
       };
@@ -182,19 +173,21 @@
     }
 
     function clampAngle(prev, next) {
-      if (prev == null || Number.isNaN(prev)) return next;
+      if (Number.isNaN(next)) return prev ?? 0;
       let candidate = next;
+      while (candidate > 180) candidate -= 360;
+      while (candidate < -180) candidate += 360;
+      if (prev == null || Number.isNaN(prev)) return candidate;
       let delta = candidate - prev;
-      while (delta > 180) {
-        candidate -= 360;
-        delta = candidate - prev;
-      }
-      while (delta < -180) {
-        candidate += 360;
-        delta = candidate - prev;
-      }
+      if (delta > 180) candidate -= 360;
+      if (delta < -180) candidate += 360;
+      while (candidate > 180) candidate -= 360;
+      while (candidate < -180) candidate += 360;
       return candidate;
     }
+
+    const parts = { LU: null, LL: null };
+    const lowerArmExtras = [];
 
     function isDebugActive() {
       return DEBUG_ARM || !puppetArmReady;
@@ -207,8 +200,15 @@
         if (!rect) continue;
         rect.style.display = showDebug ? 'block' : 'none';
       }
-      if (upperArmEl) upperArmEl.style.display = showDebug ? 'none' : '';
-      if (lowerArmEl) lowerArmEl.style.display = showDebug ? 'none' : '';
+      const puppetEls = [];
+      if (parts.LU) puppetEls.push(parts.LU);
+      for (const el of getLowerArmElements()) {
+        if (!el || puppetEls.includes(el)) continue;
+        puppetEls.push(el);
+      }
+      for (const el of puppetEls) {
+        el.style.display = showDebug ? 'none' : '';
+      }
     }
 
     let frames = [];
@@ -217,12 +217,18 @@
     const segments = {};
     let armPath = null;
     let running = false;
-    let upperArmEl = null;
-    let lowerArmEl = null;
     let puppetArmReady = false;
-    let puppetWarningShown = false;
     let lastArmRig = null;
     const lastArmAngles = { upper: null, lower: null };
+
+    function getLowerArmElements() {
+      const list = [];
+      if (parts.LL) list.push(parts.LL);
+      for (const extra of lowerArmExtras) {
+        if (extra) list.push(extra);
+      }
+      return list;
+    }
 
     function seg(id) {
       const r = document.createElementNS(NS, 'rect');
@@ -236,12 +242,16 @@
       return r;
     }
 
-    function rotatePuppetSegment(el, origin, target, key) {
-      if (!el || !origin || !target) return;
-      const ang = clampAngle(lastArmAngles[key], angle(origin, target));
+    function rotatePuppetSegment(elements, origin, target, key) {
+      const list = Array.isArray(elements) ? elements.filter(Boolean) : [elements].filter(Boolean);
+      if (!list.length || !origin || !target) return;
+      const raw = angle(origin, target);
+      const ang = clampAngle(lastArmAngles[key], raw);
       lastArmAngles[key] = ang;
-      el.style.transformOrigin = `${origin.x}px ${origin.y}px`;
-      el.style.transform = `rotate(${ang}deg)`;
+      for (const el of list) {
+        el.style.transformOrigin = `${origin.x}px ${origin.y}px`;
+        el.style.transform = `rotate(${ang}deg)`;
+      }
     }
 
     function tick() {
@@ -261,22 +271,37 @@
         return;
       }
 
-      const LSh = safeKP(kp, 'leftShoulder');
-      const LE = safeKP(kp, 'leftElbow');
-      const LW = safeKP(kp, 'leftWrist');
-      const RSh = safeKP(kp, 'rightShoulder');
-      const RE = safeKP(kp, 'rightElbow');
-      const RW = safeKP(kp, 'rightWrist');
+      const LSh = kp?.leftShoulder ?? null;
+      const LE = kp?.leftElbow ?? null;
+      const LW = kp?.leftWrist ?? null;
+      const RSh = kp?.rightShoulder ?? null;
+      const RE = kp?.rightElbow ?? null;
+      const RW = kp?.rightWrist ?? null;
+
+      const clonePoint = (p) => (p ? { x: p.x, y: p.y } : null);
+      const missing = [];
+      if (!LSh) missing.push('A');
+      if (!LE) missing.push('B');
+      if (!LW) missing.push('C');
 
       let currentArmRig = null;
-      if (LSh && LE && LW) {
+      if (!missing.length) {
         const A = toRig(LSh, rig);
         const B = toRig(LE, rig);
         const C = toRig(LW, rig);
-        currentArmRig = { A, B, C };
-        lastArmRig = currentArmRig;
-      } else if (lastArmRig) {
-        currentArmRig = lastArmRig;
+        currentArmRig = { A: clonePoint(A), B: clonePoint(B), C: clonePoint(C) };
+        lastArmRig = { A: clonePoint(A), B: clonePoint(B), C: clonePoint(C) };
+      } else {
+        if (lastArmRig) {
+          console.warn(`[arm] hold last frame (missing: ${missing.join(',')})`);
+          currentArmRig = {
+            A: clonePoint(lastArmRig.A),
+            B: clonePoint(lastArmRig.B),
+            C: clonePoint(lastArmRig.C)
+          };
+        } else {
+          console.warn(`[arm] missing joints (missing: ${missing.join(',')})`);
+        }
       }
 
       if (currentArmRig && armPath) {
@@ -294,8 +319,8 @@
 
       if (currentArmRig && !showDebug && puppetArmReady) {
         const { A, B, C } = currentArmRig;
-        rotatePuppetSegment(upperArmEl, A, B, 'upper');
-        rotatePuppetSegment(lowerArmEl, B, C, 'lower');
+        rotatePuppetSegment(parts.LU, A, B, 'upper');
+        rotatePuppetSegment(getLowerArmElements(), B, C, 'lower');
       }
 
       if (showDebug) {
@@ -343,56 +368,44 @@
         segments.R_upper = seg('R_upper');
         segments.R_lower = seg('R_lower');
 
-        const upperCandidates = [
-          'leftUpperArm',
-          'LeftUpperArm',
-          'left_upper_arm',
-          'Left_arm_upper',
-          'leftArmUpper',
-          'leftupperarm',
-          'leftArm_Upper'
-        ];
-        const lowerCandidates = [
-          'leftLowerArm',
-          'LeftLowerArm',
-          'left_lower_arm',
-          'Left_arm_lower',
-          'leftArmLower',
-          'leftlowerarm',
-          'leftArm_Lower'
-        ];
+        const armElements = Array.from(svgEl.querySelectorAll('[id]')).filter((el) => /arm/i.test(el.id));
+        const candidateIds = armElements.map((el) => el.id);
+        console.log('[arm] candidates:', candidateIds);
 
-        const findArmPart = (candidates) => {
-          for (const id of candidates) {
-            const el = svgEl.getElementById(id);
-            if (el) return el;
-          }
-          return null;
+        parts.LU = armElements.find((el) => /left/i.test(el.id) && /upper/i.test(el.id)) ?? null;
+        parts.LL = armElements.find((el) => /left/i.test(el.id) && /lower/i.test(el.id)) ?? null;
+
+        const handEl = svgEl.getElementById('leftHand');
+        if (handEl) {
+          lowerArmExtras.push(handEl);
+        }
+
+        puppetArmReady = Boolean(parts.LU && parts.LL);
+        if (puppetArmReady) {
+          console.log(`[arm] found: LU=${parts.LU.id}, LL=${parts.LL.id}`);
+        } else {
+          console.warn('[arm] groups not found, staying in DEBUG mode');
+        }
+
+        const applyArmStyles = (el) => {
+          if (!el) return;
+          el.style.transformBox = 'fill-box';
+          el.style.transition = 'transform 60ms linear';
+          el.classList.add('joint');
         };
 
-        upperArmEl = findArmPart(upperCandidates);
-        lowerArmEl = findArmPart(lowerCandidates);
-        puppetArmReady = Boolean(upperArmEl && lowerArmEl);
-
-        if (!puppetArmReady && !puppetWarningShown) {
-          console.warn('Braço esquerdo do puppet não encontrado em boy.svg; mantendo modo debug.');
-          puppetWarningShown = true;
+        applyArmStyles(parts.LU);
+        for (const el of getLowerArmElements()) {
+          applyArmStyles(el);
         }
 
-        if (upperArmEl) {
-          upperArmEl.style.transformBox = 'fill-box';
-          upperArmEl.classList.add('joint');
+        if (parts.LU && parts.LU.parentNode) {
+          parts.LU.parentNode.appendChild(parts.LU);
         }
-        if (lowerArmEl) {
-          lowerArmEl.style.transformBox = 'fill-box';
-          lowerArmEl.classList.add('joint');
-        }
-
-        if (upperArmEl && upperArmEl.parentNode) {
-          upperArmEl.parentNode.appendChild(upperArmEl);
-        }
-        if (lowerArmEl && lowerArmEl.parentNode) {
-          lowerArmEl.parentNode.appendChild(lowerArmEl);
+        for (const el of getLowerArmElements()) {
+          if (el && el.parentNode) {
+            el.parentNode.appendChild(el);
+          }
         }
 
         updateVisibility();
