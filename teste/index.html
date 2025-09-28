@@ -193,6 +193,47 @@
       return trimmed === '-0' ? '0' : trimmed;
     };
 
+    function midpoint(p, q) {
+      if (!p || !q) return null;
+      return { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
+    }
+
+    function similarityFrom2Points(baseA, baseB, liveA, liveB) {
+      if (!baseA || !baseB || !liveA || !liveB) return null;
+      const baseDx = baseB.x - baseA.x;
+      const baseDy = baseB.y - baseA.y;
+      const liveDx = liveB.x - liveA.x;
+      const liveDy = liveB.y - liveA.y;
+      const baseLen = Math.hypot(baseDx, baseDy);
+      const liveLen = Math.hypot(liveDx, liveDy);
+      if (baseLen < 1e-6 || liveLen < 1e-6) return null;
+      const baseUx = baseDx / baseLen;
+      const baseUy = baseDy / baseLen;
+      const liveUx = liveDx / liveLen;
+      const liveUy = liveDy / liveLen;
+      const cos = baseUx * liveUx + baseUy * liveUy;
+      const sin = baseUx * liveUy - baseUy * liveUx;
+      const scale = liveLen / baseLen;
+      const a = scale * cos;
+      const b = scale * sin;
+      const c = -scale * sin;
+      const d = scale * cos;
+      const e = liveA.x - (a * baseA.x + c * baseA.y);
+      const f = liveA.y - (b * baseA.x + d * baseA.y);
+      if ([a, b, c, d, e, f].some((value) => !Number.isFinite(value))) return null;
+      return { a, b, c, d, e, f };
+    }
+
+    function applyMatrixToElement(el, matrix) {
+      if (!el) return;
+      if (matrix) {
+        const { a, b, c, d, e, f } = matrix;
+        el.setAttribute('transform', `matrix(${a} ${b} ${c} ${d} ${e} ${f})`);
+      } else {
+        el.removeAttribute('transform');
+      }
+    }
+
     function updateSpeedIndicator(value = playbackSpeed) {
       if (!speedValue) return;
       const formatted = formatFloat(value ?? playbackSpeed);
@@ -301,6 +342,20 @@
       { ...PUPPET_RIGHT_HIP },
       { ...PUPPET_LEFT_HIP }
     ];
+    const torsoRigState = {
+      node: null,
+      base: {
+        leftShoulder: null,
+        rightShoulder: null,
+        leftHip: null,
+        rightHip: null
+      },
+      ready: false,
+      lastMatrix: null,
+      lastNeckAnchor: null
+    };
+    const TORSO_NECK_OFFSET = { x: 0, y: -20 };
+    let lastNeckAnchorLogged = null;
     const PUPPET_ARM_BASES = {
       left: {
         upper: [{ ...PUPPET_LEFT_SH }, { ...PUPPET_LEFT_EL }],
@@ -391,6 +446,113 @@
         y: b * point.x + d * point.y + f
       };
     };
+
+    function parseDataPoint(value) {
+      if (typeof value !== 'string') return null;
+      const parts = value.split(',');
+      if (parts.length < 2) return null;
+      const x = Number.parseFloat(parts[0]);
+      const y = Number.parseFloat(parts[1]);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+      return { x, y };
+    }
+
+    function ensureTorso(svg = svgEl) {
+      const context = svg || svgEl;
+      if (!context) return null;
+      if (!torsoRigState.node) {
+        torsoRigState.node = context.getElementById ? context.getElementById('torso') : null;
+      }
+      const node = torsoRigState.node;
+      if (!node) {
+        torsoRigState.ready = false;
+        return null;
+      }
+      const dataset = node.dataset || {};
+      const basePoints = {
+        leftShoulder: parseDataPoint(dataset.leftShoulder),
+        rightShoulder: parseDataPoint(dataset.rightShoulder),
+        leftHip: parseDataPoint(dataset.leftHip),
+        rightHip: parseDataPoint(dataset.rightHip)
+      };
+      const ready = Object.values(basePoints).every(Boolean);
+      if (ready) {
+        torsoRigState.base = basePoints;
+        torsoRigState.ready = true;
+        return torsoRigState;
+      }
+      torsoRigState.ready = false;
+      return null;
+    }
+
+    function logNeckAnchor(anchor) {
+      if (!anchor) return;
+      if (lastNeckAnchorLogged) {
+        const delta = Math.hypot(
+          anchor.x - lastNeckAnchorLogged.x,
+          anchor.y - lastNeckAnchorLogged.y
+        );
+        if (delta < 0.5) return;
+      }
+      lastNeckAnchorLogged = { x: anchor.x, y: anchor.y };
+      console.log('neckAnchor', {
+        x: Number.parseFloat(formatFloat(anchor.x)),
+        y: Number.parseFloat(formatFloat(anchor.y))
+      });
+    }
+
+    function applyTorsoRig(liveTorso) {
+      const torso = ensureTorso();
+      if (!torso || !torso.node) return torsoRigState.lastNeckAnchor;
+      const shoulders = liveTorso?.shoulders || {};
+      const liveLeft = shoulders.left || null;
+      const liveRight = shoulders.right || null;
+      let matrix = null;
+      if (torso.ready && liveLeft && liveRight) {
+        matrix = similarityFrom2Points(
+          torso.base.leftShoulder,
+          torso.base.rightShoulder,
+          liveLeft,
+          liveRight
+        );
+      }
+      if (!matrix) {
+        matrix = torsoRigState.lastMatrix;
+      }
+      if (matrix) {
+        applyMatrixToElement(torso.node, matrix);
+        torsoRigState.lastMatrix = matrix;
+      } else {
+        applyMatrixToElement(torso.node, null);
+        torsoRigState.lastMatrix = null;
+      }
+      let neckAnchor = null;
+      if (matrix && torso.ready) {
+        const baseMid = midpoint(torso.base.leftShoulder, torso.base.rightShoulder);
+        if (baseMid) {
+          const localAnchor = {
+            x: baseMid.x + TORSO_NECK_OFFSET.x,
+            y: baseMid.y + TORSO_NECK_OFFSET.y
+          };
+          neckAnchor = transformPoint(matrix, localAnchor);
+        }
+      }
+      if (!neckAnchor && liveLeft && liveRight) {
+        const liveMid = midpoint(liveLeft, liveRight);
+        if (liveMid) {
+          neckAnchor = {
+            x: liveMid.x + TORSO_NECK_OFFSET.x,
+            y: liveMid.y + TORSO_NECK_OFFSET.y
+          };
+        }
+      }
+      if (neckAnchor) {
+        torsoRigState.lastNeckAnchor = { x: neckAnchor.x, y: neckAnchor.y };
+        logNeckAnchor(torsoRigState.lastNeckAnchor);
+        return torsoRigState.lastNeckAnchor;
+      }
+      return torsoRigState.lastNeckAnchor;
+    }
 
     function invertMatrix(matrix) {
       if (!matrix) return null;
@@ -1734,16 +1896,27 @@
           ], bodyMatrix);
         }
         applyBodyTransform(bodyMatrix);
-        if (bodyMatrix) {
+        const torsoAnchor = applyTorsoRig(torsoRig);
+        if (torsoAnchor) {
+          neckBase = torsoAnchor;
+        } else if (bodyMatrix) {
           neckBase = transformPoint(bodyMatrix, PUPPET_SHOULDERS_MID) || centerTop;
         } else {
           neckBase = centerTop;
         }
       } else if (LSh && RSh) {
-        neckBase = toRig(mid(LSh, RSh), rig);
+        const fallbackTorso = {
+          shoulders: {
+            left: toRig(LSh, rig),
+            right: toRig(RSh, rig)
+          }
+        };
+        const torsoAnchor = applyTorsoRig(fallbackTorso);
+        neckBase = torsoAnchor || toRig(mid(LSh, RSh), rig);
         applyBodyTransform(null);
       } else {
         applyBodyTransform(null);
+        applyTorsoRig(null);
       }
 
       updateFaceGuides(kp, rig, { neck: neckBase });
@@ -1775,6 +1948,7 @@
         svgEl.style.width = '100%';
         svgEl.style.height = 'auto';
         normalizePuppetStructure();
+        ensureTorso(svgEl);
         faceTemplatesRoot = svgEl.getElementById('face_templates');
         updatePuppetMeasurementsFromSkeleton();
         if (faceTemplatesRoot) {
