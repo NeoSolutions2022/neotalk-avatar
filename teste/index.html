@@ -350,6 +350,34 @@
       };
     };
 
+    function invertMatrix(matrix) {
+      if (!matrix) return null;
+      const { a, b, c, d, e, f } = matrix;
+      const det = a * d - b * c;
+      if (Math.abs(det) < 1e-8) return null;
+      const invDet = 1 / det;
+      return {
+        a: d * invDet,
+        b: -b * invDet,
+        c: -c * invDet,
+        d: a * invDet,
+        e: (c * f - d * e) * invDet,
+        f: (b * e - a * f) * invDet
+      };
+    }
+
+    function mapPoints(points, matrix) {
+      if (!Array.isArray(points) || !matrix) return points;
+      const mapped = [];
+      for (const pt of points) {
+        if (!pt) return null;
+        const next = transformPoint(matrix, pt);
+        if (!next) return null;
+        mapped.push(next);
+      }
+      return mapped.length === points.length ? mapped : null;
+    }
+
     function placeLine(line, start, end) {
       if (!line || !start || !end) return;
       line.setAttribute('x1', start.x);
@@ -871,10 +899,13 @@
             state.base = points.map((pt) => ({ x: pt.x, y: pt.y }));
           }
         },
-        update({ points }) {
-          const pts = Array.isArray(points) && points.length >= 2 ? points : state.base;
+        update({ points, inverseMatrix }) {
+          const ptsGlobal = Array.isArray(points) && points.length >= 2 ? points : state.base;
+          if (!ptsGlobal || ptsGlobal.length < 2) return;
+          const local = inverseMatrix ? mapPoints(ptsGlobal, inverseMatrix) : ptsGlobal;
+          const pts = Array.isArray(local) && local.length >= 2 ? local : state.base;
           if (!pts || pts.length < 2) return;
-          // Preserve the template styling while redrawing the brow to match the debug polyline.
+          // Preserve the template styling while redrawing the brow in head-local space so the head transform keeps it attached.
           const data = buildSmoothPath(pts, { closed: false, tension: options.tension ?? 0.6 });
           path.setAttribute('d', data);
         }
@@ -928,11 +959,14 @@
             state.base = points.map((pt) => ({ x: pt.x, y: pt.y }));
           }
         },
-        update({ points }) {
+        update({ points, inverseMatrix }) {
           const ptsRaw = Array.isArray(points) && points.length ? points : state.base;
-          const pts = normalizeLoopPoints(ptsRaw || []);
+          if (!Array.isArray(ptsRaw) || !ptsRaw.length) return;
+          const localRaw = inverseMatrix ? mapPoints(ptsRaw, inverseMatrix) : ptsRaw;
+          const working = Array.isArray(localRaw) && localRaw.length ? localRaw : state.base;
+          const pts = normalizeLoopPoints(working || []);
           if (!Array.isArray(pts) || pts.length < 3) return;
-          // Rebuild the eyelid path each frame so the cloned eye keeps the template colours but matches the guide.
+          // Rebuild the eyelid path each frame in head-local space so the head transform keeps it glued to the mesh.
           const tension = options.tension ?? 0.75;
           const pathData = buildSmoothPath(pts, { closed: true, tension });
           outer.setAttribute('d', pathData);
@@ -1000,23 +1034,30 @@
       base.style.display = 'none';
       group.appendChild(base);
 
+      const initialPart = options.part || 'default';
       const state = {
-        base: Array.isArray(options.fallback)
-          ? options.fallback.map((pt) => ({ x: pt.x, y: pt.y }))
-          : null
+        base: {}
       };
+      if (Array.isArray(options.fallback)) {
+        state.base[initialPart] = options.fallback.map((pt) => ({ x: pt.x, y: pt.y }));
+      }
 
       return {
         el: group,
-        setBase(points) {
+        setBase(points, partArg) {
+          const key = partArg || options.part || 'default';
           if (Array.isArray(points)) {
-            state.base = points.map((pt) => ({ x: pt.x, y: pt.y }));
+            state.base[key] = points.map((pt) => ({ x: pt.x, y: pt.y }));
           }
         },
-        update({ points, part }) {
-          const pts = Array.isArray(points) && points.length >= 2 ? points : state.base;
+        update({ points, part, inverseMatrix }) {
+          const key = part || options.part || 'default';
+          const ptsGlobal = Array.isArray(points) && points.length >= 2 ? points : state.base[key];
+          if (!ptsGlobal || ptsGlobal.length < 2) return;
+          const local = inverseMatrix ? mapPoints(ptsGlobal, inverseMatrix) : ptsGlobal;
+          const pts = Array.isArray(local) && local.length >= 2 ? local : state.base[key];
           if (!pts || pts.length < 2) return;
-          // Apply the template's stroke to a freshly generated curve that follows the live guide points.
+          // Apply the template's stroke to a freshly generated curve that follows the live guide points in head space.
           const tension = part === 'base' ? options.baseTension ?? 0.55 : options.bridgeTension ?? 0.35;
           const data = buildSmoothPath(pts, { closed: false, tension });
           if (part === 'base') {
@@ -1058,24 +1099,31 @@
       group.appendChild(inner);
 
       const baseStroke = parseFloat(outer.getAttribute('stroke-width')) || (options.outerStrokeWidth ?? 4);
+      const initialPart = options.part || 'default';
       const state = {
-        base: Array.isArray(options.fallback)
-          ? options.fallback.map((pt) => ({ x: pt.x, y: pt.y }))
-          : null
+        base: {}
       };
+      if (Array.isArray(options.fallback)) {
+        state.base[initialPart] = options.fallback.map((pt) => ({ x: pt.x, y: pt.y }));
+      }
 
       return {
         el: group,
-        setBase(points) {
+        setBase(points, partArg) {
+          const key = partArg || options.part || 'default';
           if (Array.isArray(points)) {
-            state.base = points.map((pt) => ({ x: pt.x, y: pt.y }));
+            state.base[key] = points.map((pt) => ({ x: pt.x, y: pt.y }));
           }
         },
-        update({ points, part }) {
-          const ptsRaw = Array.isArray(points) && points.length ? points : state.base;
-          const pts = normalizeLoopPoints(ptsRaw || []);
+        update({ points, part, inverseMatrix }) {
+          const key = part || options.part || 'default';
+          const ptsRaw = Array.isArray(points) && points.length ? points : state.base[key];
+          if (!Array.isArray(ptsRaw) || !ptsRaw.length) return;
+          const localRaw = inverseMatrix ? mapPoints(ptsRaw, inverseMatrix) : ptsRaw;
+          const working = Array.isArray(localRaw) && localRaw.length ? localRaw : state.base[key];
+          const pts = normalizeLoopPoints(working || []);
           if (!Array.isArray(pts) || pts.length < 3) return;
-          // Use the template colours on a path rebuilt from the pose data to keep expressions aligned with the guides.
+          // Use the template colours on a path rebuilt from the pose data in head-local coordinates.
           const tension = part === 'outer' ? options.outerTension ?? 0.6 : options.innerTension ?? 0.58;
           const data = buildSmoothPath(pts, { closed: true, tension });
           if (part === 'outer') {
@@ -1110,7 +1158,7 @@
       if (key && faceFeatureRegistry.has(key)) {
         const cached = faceFeatureRegistry.get(key);
         if (cached && typeof cached.setBase === 'function' && fallback) {
-          cached.setBase(fallback);
+          cached.setBase(fallback, options.part);
         }
         if (cached && options.id && cached.el && !cached.el.id) {
           cached.el.id = options.id;
@@ -1124,7 +1172,7 @@
         handler.el.id = options.id;
       }
       if (handler && typeof handler.setBase === 'function' && fallback) {
-        handler.setBase(fallback);
+        handler.setBase(fallback, options.part);
       }
       if (key && handler) {
         faceFeatureRegistry.set(key, handler);
@@ -1485,6 +1533,8 @@
         validateSegment('face-contour', contourFallback, contourTarget, headMatrix);
       }
 
+      const headInverse = headMatrix ? invertMatrix(headMatrix) : null;
+
       for (const update of pendingUpdates) {
         const { segment, target } = update;
         const { handler, handlerEl, featurePart, fallback, ids } = segment;
@@ -1496,6 +1546,7 @@
           ids,
           element: handlerEl || handler.el || null,
           matrix: headMatrix,
+          inverseMatrix: headInverse,
           contourFallback,
           contourTarget
         });
