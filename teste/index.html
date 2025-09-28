@@ -94,6 +94,31 @@
       box-shadow: inset 0 0 0 1px rgba(125, 139, 166, 0.18);
     }
 
+    #playbackControls {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      background: rgba(74, 139, 255, 0.08);
+      border-radius: 12px;
+      padding: 0.55rem 0.9rem;
+      border: 1px solid rgba(74, 139, 255, 0.18);
+    }
+
+    #playbackControls label {
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+
+    #speedControl {
+      width: min(220px, 45vw);
+    }
+
+    #speedValue {
+      font-weight: 600;
+      min-width: 3ch;
+      text-align: right;
+    }
+
     .joint {
       transform-box: fill-box;
       transform-origin: center;
@@ -136,11 +161,22 @@
     <button type="button" class="debug-toggle" data-toggle-target="body" aria-pressed="true">Corpo</button>
     <button type="button" class="debug-toggle" data-toggle-target="face" aria-pressed="true">Rosto</button>
   </section>
+  <section id="playbackControls" aria-label="Controle de velocidade da animação">
+    <label for="speedControl">Velocidade:</label>
+    <input type="range" id="speedControl" min="0" max="2.5" step="0.05" value="1" />
+    <output id="speedValue" for="speedControl">1×</output>
+  </section>
   <div id="error" role="alert"></div>
   <script>
     const stage = document.getElementById('stage');
     const errorBox = document.getElementById('error');
+    const speedControl = document.getElementById('speedControl');
+    const speedValue = document.getElementById('speedValue');
     const NS = 'http://www.w3.org/2000/svg';
+
+    const DEFAULT_PLAYBACK_SPEED = 1;
+    const DEFAULT_FPS = 30;
+    const BASE_FRAME_DURATION = 1000 / DEFAULT_FPS;
 
     const showError = (msg) => {
       errorBox.textContent = msg;
@@ -156,6 +192,12 @@
       const trimmed = fixed.replace(/\.0+$/, '').replace(/(\.\d+?)0+$/, '$1');
       return trimmed === '-0' ? '0' : trimmed;
     };
+
+    function updateSpeedIndicator(value = playbackSpeed) {
+      if (!speedValue) return;
+      const formatted = formatFloat(value ?? playbackSpeed);
+      speedValue.textContent = `${formatted}×`;
+    }
 
     function normalizeLoopPoints(points) {
       if (!Array.isArray(points) || points.length < 2) return points || [];
@@ -608,6 +650,9 @@
     let frames = [];
     let frameIndex = 0;
     let svgEl = null;
+    let playbackSpeed = DEFAULT_PLAYBACK_SPEED;
+    let frameAccumulator = 0;
+    let lastTickTime = null;
     const segments = {
       left: { upper: null, lower: null },
       right: { upper: null, lower: null },
@@ -627,14 +672,19 @@
 
       const existingBody = svgEl.getElementById('puppet_body');
       const existingHead = svgEl.getElementById('puppet_head_base');
+      const existingHeadRig = svgEl.getElementById('puppet_head_rig');
       const bodyGroup = existingBody || document.createElementNS(NS, 'g');
       const headGroup = existingHead || document.createElementNS(NS, 'g');
+      const headRig = existingHeadRig || document.createElementNS(NS, 'g');
 
       if (!existingBody) {
         bodyGroup.id = 'puppet_body';
       }
       if (!existingHead) {
         headGroup.id = 'puppet_head_base';
+      }
+      if (!existingHeadRig) {
+        headRig.id = 'puppet_head_rig';
       }
 
       const headNodes = [];
@@ -644,7 +694,7 @@
 
       const children = Array.from(illustration.children);
       children.forEach((node) => {
-        if (node === bodyGroup || node === headGroup) return;
+        if (node === bodyGroup || node === headGroup || node === headRig) return;
         if (node.nodeType !== 1) return;
         if (skipIds.has(node.id)) return;
         if (node.id === 'face_templates') return;
@@ -654,11 +704,20 @@
         else bodyNodes.push(node);
       });
 
-      if (!existingBody) {
+      if (!existingBody || bodyGroup.parentNode !== illustration) {
         illustration.insertBefore(bodyGroup, illustration.firstChild);
       }
-      if (!existingHead) {
-        illustration.appendChild(headGroup);
+
+      if (!headRig.parentNode || headRig.parentNode !== illustration) {
+        illustration.appendChild(headRig);
+      }
+
+      if (bodyGroup.parentNode === illustration) {
+        illustration.insertBefore(headRig, bodyGroup.nextSibling);
+      }
+
+      if (headGroup.parentNode !== headRig) {
+        headRig.appendChild(headGroup);
       }
 
       headNodes.forEach((node) => {
@@ -672,7 +731,11 @@
       if (!headFront) {
         headFront = document.createElementNS(NS, 'g');
         headFront.id = 'puppet_head_front';
-        headGroup.parentNode.insertBefore(headFront, headGroup.nextSibling);
+      }
+      if (headFront.parentNode !== headRig) {
+        headRig.appendChild(headFront);
+      } else {
+        headRig.appendChild(headFront);
       }
 
       Array.from(headGroup.children).forEach((child) => {
@@ -1555,8 +1618,40 @@
       applyHeadTransform(headMatrix);
     }
 
-    function tick() {
-      if (!frames.length) return;
+    function tick(timestamp) {
+      if (!running) return;
+      if (!frames.length) {
+        requestAnimationFrame(tick);
+        return;
+      }
+
+      if (typeof timestamp !== 'number') {
+        timestamp = performance.now();
+      }
+
+      if (lastTickTime == null) {
+        lastTickTime = timestamp;
+      }
+
+      let delta = timestamp - lastTickTime;
+      if (!Number.isFinite(delta) || delta < 0) {
+        delta = 0;
+      }
+      const MAX_STEP = BASE_FRAME_DURATION * 5;
+      if (delta > MAX_STEP) {
+        delta = MAX_STEP;
+      }
+
+      lastTickTime = timestamp;
+
+      const effectiveSpeed = Math.max(playbackSpeed, 0);
+      frameAccumulator += (delta / BASE_FRAME_DURATION) * effectiveSpeed;
+      if (frameAccumulator >= 1) {
+        const steps = Math.floor(frameAccumulator);
+        frameAccumulator -= steps;
+        frameIndex = (frameIndex + steps) % frames.length;
+      }
+
       const frame = frames[frameIndex];
       const kp = frame?.keypoints;
       if (!kp) {
@@ -1653,13 +1748,14 @@
 
       updateFaceGuides(kp, rig, { neck: neckBase });
 
-      frameIndex = (frameIndex + 1) % frames.length;
       requestAnimationFrame(tick);
     }
 
     function tryStart() {
       if (!running && svgEl && frames.length) {
         running = true;
+        frameAccumulator = 0;
+        lastTickTime = null;
         requestAnimationFrame(tick);
       }
     }
@@ -1686,10 +1782,15 @@
         }
         headTargets = [];
         bodyTargets = [];
+        const headRig = svgEl.getElementById('puppet_head_rig');
         const headBase = svgEl.getElementById('puppet_head_base');
         const headFront = svgEl.getElementById('puppet_head_front');
-        if (headBase) headTargets.push(headBase);
-        if (headFront) headTargets.push(headFront);
+        if (headRig) {
+          headTargets.push(headRig);
+        } else {
+          if (headBase) headTargets.push(headBase);
+          if (headFront) headTargets.push(headFront);
+        }
         lastHeadMatrix = null;
         lastBodyMatrix = null;
         lastRigMatrix = null;
@@ -1704,17 +1805,28 @@
         if (!faceOverlayLayer) {
           faceOverlayLayer = document.createElementNS(NS, 'g');
           faceOverlayLayer.id = 'face_overlay_layer';
-          if (headFront && headFront.parentNode) {
-            headFront.parentNode.insertBefore(faceOverlayLayer, headFront);
-          } else if (headBase && headBase.parentNode) {
-            headBase.parentNode.insertBefore(faceOverlayLayer, headBase.nextSibling);
-          } else {
-            svgEl.appendChild(faceOverlayLayer);
-          }
         }
         faceOverlayLayer.style.pointerEvents = 'none';
-        if (faceOverlayLayer && !headTargets.includes(faceOverlayLayer)) {
-          headTargets.push(faceOverlayLayer);
+
+        if (headRig) {
+          const reference = headFront && headFront.parentNode === headRig ? headFront : null;
+          if (reference) {
+            if (faceOverlayLayer.parentNode !== headRig || faceOverlayLayer.nextSibling !== reference) {
+              headRig.insertBefore(faceOverlayLayer, reference);
+            }
+          } else if (faceOverlayLayer.parentNode !== headRig) {
+            headRig.appendChild(faceOverlayLayer);
+          }
+        } else if (headFront && headFront.parentNode) {
+          if (faceOverlayLayer.parentNode !== headFront.parentNode || faceOverlayLayer.nextSibling !== headFront) {
+            headFront.parentNode.insertBefore(faceOverlayLayer, headFront);
+          }
+        } else if (headBase && headBase.parentNode) {
+          if (faceOverlayLayer.parentNode !== headBase.parentNode) {
+            headBase.parentNode.insertBefore(faceOverlayLayer, headBase.nextSibling);
+          }
+        } else if (!faceOverlayLayer.parentNode && svgEl) {
+          svgEl.appendChild(faceOverlayLayer);
         }
         faceFeatureRegistry.clear();
         headAnchorBase = null;
@@ -2024,12 +2136,38 @@
           throw new Error('Arquivo pose_frames.json vazio ou inválido.');
         }
         frames = data;
+        frameIndex = 0;
+        frameAccumulator = 0;
+        lastTickTime = null;
         tryStart();
       })
       .catch((err) => {
         console.error(err);
         showError('Erro ao carregar pose_frames.json: ' + err.message);
       });
+
+    if (speedControl) {
+      const updatePlaybackSpeed = (value) => {
+        const parsed = Number.parseFloat(value);
+        playbackSpeed = Number.isFinite(parsed) ? parsed : DEFAULT_PLAYBACK_SPEED;
+        if (playbackSpeed < 0) playbackSpeed = 0;
+        updateSpeedIndicator(playbackSpeed);
+        frameAccumulator = 0;
+        lastTickTime = null;
+      };
+
+      updatePlaybackSpeed(speedControl.value ?? DEFAULT_PLAYBACK_SPEED);
+
+      speedControl.addEventListener('input', (event) => {
+        updatePlaybackSpeed(event.target.value);
+      });
+
+      speedControl.addEventListener('change', (event) => {
+        updatePlaybackSpeed(event.target.value);
+      });
+    } else {
+      updateSpeedIndicator(DEFAULT_PLAYBACK_SPEED);
+    }
 
     const toggleButtons = Array.from(document.querySelectorAll('[data-toggle-target]'));
     toggleButtons.forEach((button) => {
