@@ -71,22 +71,22 @@
 		<circle id="leftEye3_1_" cx="511.5" cy="160.7" r="0.8"/>
 		<circle id="leftEye4_1_" cx="516.7" cy="161.7" r="0.8"/>
 	</g>
-	<g>
-		<path style="fill:#2C323A;" d="M518.8,159.9c10.7-5,14.2-5,19.2,0.7C533,159.9,532.3,163.4,518.8,159.9z"/>
-		<circle id="leftBrow1_1_" cx="530.1" cy="148.7" r="0.8"/>
-		<circle id="leftBrow4_1_" cx="506.5" cy="150.8" r="0.8"/>
-		<circle id="leftBrow3_1_" cx="516.5" cy="147.6" r="0.8"/>
-		<circle id="leftBrow0_1_" cx="534.1" cy="151.6" r="0.8"/>
-		<circle id="leftBrow2_1_" cx="523.8" cy="147.2" r="0.8"/>
-	</g>
-	<g>
-		<path style="fill:#2C323A;" d="M478,159.9c-10.7-5-14.2-5-19.2,0.7C463.8,159.9,464.5,163.4,478,159.9z"/>
-		<circle id="rightBrow1_1_" cx="466.4" cy="148.3" r="0.8"/>
-		<circle id="rightBrow4_1_" cx="489.7" cy="151.3" r="0.8"/>
-		<circle id="rightBrow3_1_" cx="479.9" cy="147.3" r="0.8"/>
-		<circle id="rightBrow0_1_" cx="462.4" cy="152" r="0.8"/>
-		<circle id="rightBrow2_1_" cx="472.6" cy="147.3" r="0.8"/>
-	</g>
+       <g>
+               <path style="fill:#2C323A;" d="M518.8,159.9c10.7-5,14.2-5,19.2,0.7C533,159.9,532.3,163.4,518.8,159.9z"/>
+               <circle id="leftBrow1_1_" cx="530.1" cy="148.7" r="0.8"/>
+               <circle id="leftBrow4_1_" cx="506.5" cy="150.8" r="0.8"/>
+               <circle id="leftBrow3_1_" cx="516.5" cy="147.6" r="0.8"/>
+               <circle id="leftBrow0_1_" cx="534.1" cy="151.6" r="0.8"/>
+               <circle id="leftBrow2_1_" cx="523.8" cy="147.2" r="0.8"/>
+       </g>
+       <g>
+               <path style="fill:#2C323A;" d="M478,159.9c-10.7-5-14.2-5-19.2,0.7C463.8,159.9,464.5,163.4,478,159.9z"/>
+               <circle id="rightBrow1_1_" cx="466.4" cy="148.3" r="0.8"/>
+               <circle id="rightBrow4_1_" cx="489.7" cy="151.3" r="0.8"/>
+               <circle id="rightBrow3_1_" cx="479.9" cy="147.3" r="0.8"/>
+               <circle id="rightBrow0_1_" cx="462.4" cy="152" r="0.8"/>
+               <circle id="rightBrow2_1_" cx="472.6" cy="147.3" r="0.8"/>
+       </g>
 	<path style="fill:#72605A;" d="M456,138c1.9,7.7,62.3,20.7,82-3c10-12,9-22,4-25c-4.4-2.6-9-6-22,6c-1-9,1-15-16-17
 		C476.2,95.7,451.6,120,456,138z"/>
 	<g>
@@ -102,6 +102,30 @@
 		<circle id="leftNose0_1_" cx="508" cy="178.3" r="0.8"/>
 		<circle id="leftNose1_1_" cx="503.2" cy="178.3" r="0.8"/>
 	</g>
+</g>
+<g id="face_templates" style="display:none">
+       <g id="template_eye_right">
+               <ellipse style="fill:#DF7977;" cx="464.1" cy="196.5" rx="7.8" ry="6.2"/>
+               <ellipse style="fill:#2C323A;" cx="464" cy="180.6" rx="3.6" ry="5.8"/>
+       </g>
+       <g id="template_eye_left">
+               <ellipse style="fill:#2C323A;" cx="532.8" cy="179.6" rx="3.6" ry="5.8"/>
+               <ellipse style="fill:#DF7977;" cx="533.2" cy="196.5" rx="7.8" ry="6.2"/>
+       </g>
+       <g id="template_brow_right">
+               <path style="fill:#2C323A;" d="M478,159.9c-10.7-5-14.2-5-19.2,0.7C463.8,159.9,464.5,163.4,478,159.9z"/>
+       </g>
+       <g id="template_brow_left">
+               <path style="fill:#2C323A;" d="M518.8,159.9c10.7-5,14.2-5,19.2,0.7C533,159.9,532.3,163.4,518.8,159.9z"/>
+       </g>
+       <g id="template_nose">
+               <path style="fill:#2C323A;stroke:#2C323A;stroke-width:2;stroke-miterlimit:10;" d="M496.4,185.8c-1.2,0-4.6,1.6-5.8,5.2
+                        c-0.2,1.2,0.6,5.8,6,4.1c-0.1-1-4.7-1.1-4.5-3.7C492.4,189.6,494.1,189.6,496.4,185.8z"/>
+       </g>
+       <g id="template_mouth">
+               <path style="fill:#DF7977;stroke:#DF7977;stroke-width:2;stroke-miterlimit:10;" d="M488,210.1c0,0,7.7-0.1,11.3-0.1
+                        s11.9-0.1,11.9-0.1s-6.9,2.6-11.9,2.6C494.2,212.5,488,210.1,488,210.1z"/>
+       </g>
 </g>
 <g id="skeleton_1_">
 	<circle id="rightShoulder" cx="392.8" cy="294.3" r="8.2"/>
