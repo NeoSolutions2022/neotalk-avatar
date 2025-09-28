@@ -439,6 +439,27 @@
       return { a, b, c, d, e, f };
     }
 
+    function adjustMatrixTranslation(matrix, pairs) {
+      if (!matrix || !Array.isArray(pairs) || !pairs.length) return matrix;
+      let offsetX = 0;
+      let offsetY = 0;
+      let count = 0;
+      for (const pair of pairs) {
+        if (!pair || !pair.base || !pair.target) continue;
+        const current = transformPoint(matrix, pair.base);
+        if (!current) continue;
+        offsetX += pair.target.x - current.x;
+        offsetY += pair.target.y - current.y;
+        count += 1;
+      }
+      if (!count) return matrix;
+      return {
+        ...matrix,
+        e: matrix.e + offsetX / count,
+        f: matrix.f + offsetY / count
+      };
+    }
+
     function applyHeadTransform(matrix) {
       if (!headTargets.length) return;
       if (matrix) {
@@ -1097,14 +1118,25 @@
         placeLine(segments.body.left, shoulders.left, hips.left);
         placeLine(segments.body.right, shoulders.right, hips.right);
         placeLine(segments.body.center, centerTop, centerBottom);
-        const bodyMatrix = computeSimilarityTransform(PUPPET_BODY_BASE, [
+        let bodyMatrix = computeSimilarityTransform(PUPPET_BODY_BASE, [
           shoulders.right,
           shoulders.left,
           hips.right,
           hips.left
         ]);
+        if (bodyMatrix) {
+          bodyMatrix = adjustMatrixTranslation(bodyMatrix, [
+            { base: PUPPET_LEFT_SH, target: shoulders.left },
+            { base: PUPPET_RIGHT_SH, target: shoulders.right },
+            { base: PUPPET_SHOULDERS_MID, target: centerTop }
+          ]);
+        }
         applyBodyTransform(bodyMatrix);
-        neckBase = mid(shoulders.left, shoulders.right);
+        if (bodyMatrix) {
+          neckBase = transformPoint(bodyMatrix, PUPPET_SHOULDERS_MID) || centerTop;
+        } else {
+          neckBase = centerTop;
+        }
       } else if (LSh && RSh) {
         neckBase = toRig(mid(LSh, RSh), rig);
         applyBodyTransform(null);
@@ -1168,6 +1200,9 @@
           }
         }
         faceOverlayLayer.style.pointerEvents = 'none';
+        if (faceOverlayLayer && !headTargets.includes(faceOverlayLayer)) {
+          headTargets.push(faceOverlayLayer);
+        }
         faceFeatureRegistry.clear();
         headAnchorBase = null;
         headAnchorOffset = null;
