@@ -1,266 +1,245 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Generator: Adobe Illustrator 24.0.1, SVG Export Plug-In . SVG Version: 6.00 Build 0)  -->
 <svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
-     width="1000px" height="1000px" viewBox="0 0 1000 1000" style="enable-background:new 0 0 1000 1000;" xml:space="preserve">
-  <defs>
-    <linearGradient id="skin_shade" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" style="stop-color:#F9D7BF" />
-      <stop offset="100%" style="stop-color:#E7B89B" />
-    </linearGradient>
-    <linearGradient id="torso_fabric" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" style="stop-color:#1C3B63" />
-      <stop offset="50%" style="stop-color:#1B4679" />
-      <stop offset="100%" style="stop-color:#1A2745" />
-    </linearGradient>
-    <linearGradient id="pant_fabric" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" style="stop-color:#363B4D" />
-      <stop offset="100%" style="stop-color:#1B1F2D" />
-    </linearGradient>
-    <linearGradient id="arm_fabric" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" style="stop-color:#244A7F" />
-      <stop offset="100%" style="stop-color:#1A2F4F" />
-    </linearGradient>
-    <radialGradient id="cheek_blush" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0%" style="stop-color:#FDB7A8; stop-opacity:0.7" />
-      <stop offset="100%" style="stop-color:#FDB7A8; stop-opacity:0" />
-    </radialGradient>
-    <clipPath id="head_clip">
-      <path d="M500,116c-84.4,0-128.6,66.9-128.6,162.3c0,105.8,64.2,169.7,128.6,169.7c64.4,0,128.6-63.9,128.6-169.7
-        C628.6,182.9,584.4,116,500,116z" />
-    </clipPath>
-  </defs>
-  <g id="illustration">
-    <g id="puppet_body">
-      <g id="puppet_lower_body">
-        <path style="fill:url(#pant_fabric);" d="M401,516c-2,132-1.5,241.3-2.4,352.6c-0.2,26.4,23.4,51.4,58.8,51.4
-          c29.1,0,51.6-20.4,51.6-51.4V671h24v197.6c0,31.1,20.9,51.4,48.6,51.4c34.4,0,56.4-23.2,55.8-51.4L636,516H401z" />
-        <path style="fill:#121520;" d="M459,920c0,24.8-19.5,41.7-41.3,41.7c-28,0-51.8-21.5-51.5-46.1l0.7-46.2h92.1V920z" />
-        <path style="fill:#121520;" d="M542,920c0,24.8,19.5,41.7,41.3,41.7c28,0,51.8-21.5,51.5-46.1l-0.7-46.2H542V920z" />
-        <path style="fill:#252B3B;" d="M401.6,516h235.4c0,0,0.7-30.8-14.2-52.4c-18.9-27.9-59.8-37.4-103.5-37.4
-          c-47.4,0-85.5,14.8-105.8,37.4C393.1,484.3,401.6,516,401.6,516z" />
-      </g>
-      <g id="puppet_torso">
-        <path style="fill:url(#torso_fabric);" d="M348.4,505.3c-1.2-117.3,35.3-230.9,149.6-248.8c11.4-1.8,24.2-2.7,37.9-2.7
-          c15.6,0,30,1.2,42.9,3.7c109,21.6,139.8,132.5,140.1,247.9l-370.5-0.1H348.4z" />
-        <path style="fill:#253B5B;" d="M496.5,261.5c-34.6,4.3-62.4,23.2-79.6,50.6c-30.7,48.4-38.8,117.8-39.6,188.4h103.3
-          C479,416.9,487.7,330.4,496.5,261.5z" opacity="0.35" />
-        <path style="fill:#253B5B;" d="M503.3,261.3c10.8,69.6,20.2,155.9,16.4,239.4h101.4c-1-76.8-9.8-149.3-42.9-197
-          C561.3,276.7,535.7,265.1,503.3,261.3z" opacity="0.35" />
-        <ellipse style="fill:#F1EFEA;" cx="500" cy="304" rx="38" ry="24" />
-      </g>
-    </g>
-    <g id="rightUpperArm">
-      <path style="fill:url(#arm_fabric);" d="M384,290c-39.2,2.5-88.5,19.5-111.6,42.8c-13.4,13.7-17.3,33.5-8.4,49.3
-        c8.6,15.3,25,21.5,42.9,15.3c40.7-14.2,81.5-29.1,119.6-33.2l40.5-4.3l-0.5-76.7C433.3,283.6,408.5,288.5,384,290z" />
-    </g>
-    <g id="rightLowerArm">
-      <path style="fill:url(#skin_shade);" d="M206.5,334.5c-40.1,4.8-77.5,9.6-113.5,17.8c-32.1,7.3-35.7,44.9,8.1,46
-        c49.3,1.3,108.8-7.7,170-21.1l78.1-17.4l-6.8-63.5l-76.4,12.8C241.8,312.7,220.5,322.8,206.5,334.5z" />
-      <path style="fill:#D89B7C;" d="M101.5,368.2l-19.2-6.3c0,0-6.7,5.7-14.2,11.6c-7.5,5.9,4.9,18.8,16.7,10.9
-        C97.2,375.7,101.5,368.2,101.5,368.2z" />
-    </g>
-    <g id="leftUpperArm">
-      <path style="fill:url(#arm_fabric);" d="M618.7,283.2l-0.6,76.7l40.5,4.3c38.1,4.1,78.9,19,119.6,33.2
-        c17.9,6.2,34.3,0,42.9-15.3c8.9-15.8,5-35.6-8.4-49.3c-23-23.3-72.4-40.4-111.6-42.8C677.6,288.5,652.8,283.6,618.7,283.2z" />
-    </g>
-    <g id="leftLowerArm">
-      <path style="fill:url(#skin_shade);" d="M793.4,296.2l-76.4-12.8l-6.8,63.5l78.1,17.4c61.2,13.5,120.6,22.4,170,21.1
-        c43.8-1.1,40.2-38.7,8.1-46c-36-8.2-73.4-12.9-113.5-17.8C839,322.8,817.8,312.7,793.4,296.2z" />
-      <path style="fill:#D89B7C;" d="M898.5,368.2l19.2-6.3c0,0,6.7,5.7,14.2,11.6c7.5,5.9-4.9,18.8-16.7,10.9
-        C902.8,375.7,898.5,368.2,898.5,368.2z" />
-    </g>
-    <g id="puppet_head_base">
-      <g clip-path="url(#head_clip)">
-        <path style="fill:url(#skin_shade);" d="M500,116c-84.4,0-128.6,66.9-128.6,162.3c0,105.8,64.2,169.7,128.6,169.7
-          c64.4,0,128.6-63.9,128.6-169.7C628.6,182.9,584.4,116,500,116z" />
-        <ellipse style="fill:url(#cheek_blush);" cx="444" cy="240" rx="46" ry="38" />
-        <ellipse style="fill:url(#cheek_blush);" cx="556" cy="240" rx="46" ry="38" />
-        <path style="fill:#E4A889;" d="M487,306c7.4,7.6,19.7,12,31.8,12c11.7,0,23.4-4.2,31.2-11.2c-10.5,22.3-23.1,34.2-41.5,34.2
-          C495,341,479.6,327.6,487,306z" />
-      </g>
-      <path style="fill:#D59C7E;" d="M477,319c0,0,9.9,33.9,23,48.4c3.9,4.3,10,6.8,16.5,6.8c6.6,0,12.6-2.5,16.5-6.8
-        c13.1-14.5,23-48.4,23-48.4c-10,9.8-25,15.5-39.5,15.5C502,334.5,487,328.8,477,319z" />
-      <path style="fill:#D08567;" d="M487,420c8.4,13.3,13,20.3,13,49h-30c0-20.7,5.7-34.8,17-49z" />
-      <path style="fill:#D08567;" d="M545,420c11.3,14.2,17,28.3,17,49h-30c0-28.7,4.6-35.7,13-49H545z" />
-      <path style="fill:#C07A59;" d="M470,470c9.5,12,22.6,20,36.7,20s27.2-8,36.7-20H470z" />
-    </g>
-    <g id="face_templates" style="display:none;">
-      <g id="template_mouth">
-        <path style="fill:#8C2E2D; stroke:#6A1E1D; stroke-width:2;" d="M474,252c0,0,11.4,6.2,26,6.2s26-6.2,26-6.2
-          c0,11-11.6,22.8-26,22.8S474,263,474,252z" />
-        <path style="fill:#BF4C49;" d="M477.8,253.9c6.8,3.1,15.4,5,22.2,5c6.7,0,15.6-1.8,22.2-4.8c-3.7,7.1-13.3,12.8-22.2,12.8
-          C491.4,266.9,481.5,261.1,477.8,253.9z" />
-      </g>
-      <g id="template_eye_right">
-        <path style="fill:#FFFFFF; stroke:#1B1F2D; stroke-width:2;" d="M445,210c7.5-6.4,15.2-9.6,23.2-9.6c8.1,0,16,3.2,23.4,9.8
-          c-7.4,6.6-15.3,9.8-23.4,9.8C460.1,220,452.5,216.7,445,210z" />
-        <ellipse style="fill:#1C2A3F;" cx="468" cy="210" rx="7.8" ry="10.2" />
-        <ellipse style="fill:#0C111D;" cx="468" cy="210" rx="4.2" ry="6" />
-        <circle style="fill:#FFFFFF;" cx="471.2" cy="205.5" r="1.8" />
-      </g>
-      <g id="template_eye_left">
-        <path style="fill:#FFFFFF; stroke:#1B1F2D; stroke-width:2;" d="M555,210c-7.5-6.4-15.2-9.6-23.2-9.6c-8.1,0-16,3.2-23.4,9.8
-          c7.4,6.6,15.3,9.8,23.4,9.8C539.9,220,547.5,216.7,555,210z" />
-        <ellipse style="fill:#1C2A3F;" cx="532" cy="210" rx="7.8" ry="10.2" />
-        <ellipse style="fill:#0C111D;" cx="532" cy="210" rx="4.2" ry="6" />
-        <circle style="fill:#FFFFFF;" cx="528.8" cy="205.5" r="1.8" />
-      </g>
-      <g id="template_brow_right">
-        <path style="fill:#1B1F2D;" d="M440,192c10.2-8.6,22.8-12.8,37.8-12.8c10.7,0,20.9,2.2,30.5,6.6c-13.9,7.6-28.4,11.4-43.5,11.4
-          C455.9,197.2,447.7,195.4,440,192z" />
-      </g>
-      <g id="template_brow_left">
-        <path style="fill:#1B1F2D;" d="M560,192c-10.2-8.6-22.8-12.8-37.8-12.8c-10.7,0-20.9,2.2-30.5,6.6c13.9,7.6,28.4,11.4,43.5,11.4
-          C544.1,197.2,552.3,195.4,560,192z" />
-      </g>
-      <g id="template_nose">
-        <path style="fill:#D69374; stroke:#B67254; stroke-width:2;" d="M498.5,210c-6.5,0-14.3,8.5-14.3,17.8c0,6.7,5.5,11,12.3,11
-          h4.1c6.8,0,12.3-4.3,12.3-11C512.9,218.5,505,210,498.5,210z" />
-        <path style="fill:#C07A59;" d="M490.2,231c2.6,4,6.1,6.2,10.4,6.2c4.2,0,7.6-2.2,10.1-6.2H490.2z" />
-      </g>
-      <path id="rightMiddleLip_2_" d="M486.5,246.2c0.3,0,0.5,0.3,0.5,0.5s-0.3,0.5-0.5,0.5s-0.5-0.3-0.5-0.5S486.2,246.2,486.5,246.2z" />
-      <circle id="upperLipBottomMid_1_" cx="500" cy="246.5" r="0.5" />
-      <circle id="rightUpperLipBottom1_1_" cx="496.7" cy="246.2" r="0.5" />
-      <path id="leftMiddleLip_2_" d="M513.1,246.2c0.3,0,0.5,0.3,0.5,0.5s-0.3,0.5-0.5,0.5s-0.5-0.3-0.5-0.5S512.8,246.2,513.1,246.2z" />
-      <circle id="leftUpperLipBottom1_1_" cx="503.3" cy="246.2" r="0.5" />
-      <circle id="lowerLipTopMid_2_" cx="500" cy="248.5" r="0.5" />
-      <circle id="rightLowerLipTop0_2_" cx="496.7" cy="248.1" r="0.5" />
-      <circle id="leftLowerLipTop0_2_" cx="503.3" cy="248.1" r="0.5" />
-      <circle id="rightEye0_1_" cx="466" cy="210" r="0.8" />
-      <circle id="rightEye1_1_" cx="471.3" cy="206" r="0.8" />
-      <circle id="rightEye5_1_" cx="471.3" cy="213.6" r="0.8" />
-      <circle id="rightEye2_1_" cx="477.4" cy="206" r="0.8" />
-      <circle id="rightEye3_1_" cx="482.7" cy="210.6" r="0.8" />
-      <circle id="rightEye4_1_" cx="477.4" cy="211.5" r="0.8" />
-      <circle id="leftEye0_1_" cx="534" cy="210" r="0.8" />
-      <circle id="leftEye1_1_" cx="528.7" cy="206" r="0.8" />
-      <circle id="leftEye5_1_" cx="528.7" cy="213.6" r="0.8" />
-      <circle id="leftEye2_1_" cx="522.6" cy="206" r="0.8" />
-      <circle id="leftEye3_1_" cx="517.3" cy="210.6" r="0.8" />
-      <circle id="leftEye4_1_" cx="522.6" cy="211.5" r="0.8" />
-      <circle id="leftBrow1_1_" cx="535.2" cy="190" r="0.8" />
-      <circle id="leftBrow4_1_" cx="508.1" cy="190.8" r="0.8" />
-      <circle id="leftBrow3_1_" cx="518.5" cy="188.6" r="0.8" />
-      <circle id="leftBrow0_1_" cx="541.6" cy="193.6" r="0.8" />
-      <circle id="leftBrow2_1_" cx="525.8" cy="188.2" r="0.8" />
-      <circle id="rightBrow1_1_" cx="464.8" cy="190" r="0.8" />
-      <circle id="rightBrow4_1_" cx="491.9" cy="190.8" r="0.8" />
-      <circle id="rightBrow3_1_" cx="481.5" cy="188.6" r="0.8" />
-      <circle id="rightBrow0_1_" cx="458.4" cy="193.6" r="0.8" />
-      <circle id="rightBrow2_1_" cx="474.2" cy="188.2" r="0.8" />
-      <circle id="nose1_1_" cx="498.5" cy="222.4" r="0.8" />
-      <circle id="nose0_1_" cx="498.5" cy="216.4" r="0.8" />
-      <circle id="nose3_1_" cx="498.5" cy="231.3" r="0.8" />
-      <circle id="rightNose0_1_" cx="487.7" cy="234.8" r="0.8" />
-      <circle id="rightNose1_1_" cx="492.9" cy="234.8" r="0.8" />
-      <circle id="nose2_1_" cx="498.5" cy="225.7" r="0.8" />
-      <circle id="nose4_1_" cx="498.5" cy="236.5" r="0.8" />
-      <circle id="leftNose0_1_" cx="509.3" cy="234.8" r="0.8" />
-      <circle id="leftNose1_1_" cx="504.1" cy="234.8" r="0.8" />
-    </g>
-    <g id="face_overlay_layer"></g>
-    <path id="puppet_head_front" style="fill:#1B1F2D;" d="M377.4,236.2c11.9-72.3,63.1-126.9,151.2-126.9c102.3,0,150.3,67.8,151.2,149.2
-      c0.3,24.3-1.7,54.2-5.5,78.5c-30.9-44.4-90.3-74.9-175.5-74.9c-50.5,0-93.3,11.2-126.6,29.6C370.9,270.1,374.6,253.7,377.4,236.2z" />
-  </g>
-  <g id="skeleton_1_">
-    <circle id="rightShoulder" cx="392.8" cy="294.3" r="8.2" />
-    <circle id="rightElbow" cx="289.3" cy="294.4" r="8.2" />
-    <ellipse id="rightWrist" transform="matrix(0.9951 -9.853767e-02 9.853767e-02 0.9951 -29.0274 13.8698)" cx="125.9" cy="300.8" rx="8.2" ry="8.2" />
-    <circle id="rightHip" cx="443.1" cy="510.1" r="8.2" />
-    <circle id="rightKnee" cx="449.5" cy="670.3" r="8.2" />
-    <circle id="rightAnkle" cx="449.5" cy="878.3" r="8.2" />
-    <circle id="leftShoulder" cx="605.7" cy="294.3" r="8.2" />
-    <circle id="leftElbow" cx="710.1" cy="294" r="8.2" />
-    <circle id="leftWrist" cx="873.5" cy="300.3" r="8.2" />
-    <circle id="leftHip" cx="559.5" cy="509.3" r="8.2" />
-    <circle id="leftKnee" cx="559.5" cy="670.3" r="8.2" />
-    <circle id="leftAnkle" cx="559.5" cy="878.3" r="8.2" />
-    <polygon style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="392.7,294.6 443,510.4 559.4,509.6 605.6,294.6" />
-    <polyline style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="391.7,294.6 289,294.6 125.7,300.9" />
-    <polyline style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="607.1,294.2 710.3,294.2 873.6,300.6" />
-    <polyline style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="443,510.4 449.4,670.6 449.4,878.6" />
-    <polyline style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="559.4,509.6 559.4,670.6 559.4,878.6" />
-    <circle id="rightEye0" cx="466" cy="210" r="0.8" />
-    <circle id="rightBrow1" cx="464.8" cy="190" r="0.8" />
-    <circle id="rightBrow4" cx="491.9" cy="190.8" r="0.8" />
-    <circle id="nose1" cx="498.5" cy="222.4" r="0.8" />
-    <circle id="rightBrow3" cx="481.5" cy="188.6" r="0.8" />
-    <circle id="rightEye1" cx="471.3" cy="206" r="0.8" />
-    <circle id="rightBrow0" cx="458.4" cy="193.6" r="0.8" />
-    <circle id="rightBrow2" cx="474.2" cy="188.2" r="0.8" />
-    <circle id="rightEye5" cx="471.3" cy="213.6" r="0.8" />
-    <circle id="rightEye2" cx="477.4" cy="206" r="0.8" />
-    <circle id="rightEye3" cx="482.7" cy="210.6" r="0.8" />
-    <circle id="nose0" cx="498.5" cy="216.4" r="0.8" />
-    <circle id="nose3" cx="498.5" cy="231.3" r="0.8" />
-    <circle id="rightNose0" cx="487.7" cy="234.8" r="0.8" />
-    <circle id="rightMouthCorner" cx="482.2" cy="247.8" r="0.8" />
-    <circle id="rightNose1" cx="492.9" cy="234.8" r="0.8" />
-    <circle id="rightUpperLipTop0" cx="488.9" cy="244.4" r="0.8" />
-    <circle id="nose2" cx="498.5" cy="225.7" r="0.8" />
-    <circle id="nose4" cx="498.5" cy="236.5" r="0.8" />
-    <circle id="upperLipTopMid" cx="498.9" cy="244.2" r="0.8" />
-    <circle id="rightUpperLipTop1" cx="494.5" cy="243.2" r="0.8" />
-    <path id="rightMiddleLip" d="M484.7,246.9c0.4,0,0.8,0.4,0.8,0.8s-0.4,0.8-0.8,0.8s-0.8-0.4-0.8-0.8S484.3,246.9,484.7,246.9z" />
-    <circle id="lowerLipBottomMid" cx="498.9" cy="255.7" r="0.8" />
-    <circle id="upperLipBottomMid" cx="498.9" cy="247.8" r="0.8" />
-    <circle id="lowerLipTopMid" cx="498.9" cy="250.5" r="0.8" />
-    <circle id="rightUpperLipBottom1" cx="494.8" cy="247.1" r="0.8" />
-    <circle id="rightLowerLipTop0" cx="494.8" cy="249.8" r="0.8" />
-    <circle id="rightLowerLipBottom1" cx="494.6" cy="255.1" r="0.8" />
-    <circle id="rightLowerLipBottom0" cx="487.8" cy="252.3" r="0.8" />
-    <circle id="rightEye4" cx="477.4" cy="211.5" r="0.8" />
-    <circle id="jawMid" cx="498.9" cy="273.1" r="0.8" />
-    <circle id="rightJaw7" cx="484.3" cy="269.6" r="0.8" />
-    <circle id="rightJaw6" cx="473.2" cy="262.4" r="0.8" />
-    <circle id="rightJaw5" cx="460.4" cy="248.9" r="0.8" />
-    <circle id="rightJaw4" cx="452.6" cy="227.4" r="0.8" />
-    <circle id="rightJaw3" cx="451.6" cy="204.5" r="0.8" />
-    <circle id="rightJaw2" cx="451.6" cy="194.2" r="0.8" />
-    <circle id="rightJaw1" cx="452.6" cy="181.6" r="0.8" />
-    <circle id="rightJaw0" cx="455.3" cy="170.9" r="0.8" />
-    <circle id="topMid" cx="499.1" cy="134.1" r="0.8" />
-    <circle id="leftTop0" cx="521.3" cy="137.4" r="0.8" />
-    <circle id="leftTop1" cx="534.8" cy="149.6" r="0.8" />
-    <circle id="leftEye0" cx="534" cy="210" r="0.8" />
-    <circle id="leftBrow1" cx="535.2" cy="190" r="0.8" />
-    <circle id="leftBrow4" cx="508.1" cy="190.8" r="0.8" />
-    <circle id="leftBrow3" cx="518.5" cy="188.6" r="0.8" />
-    <circle id="leftEye1" cx="528.7" cy="206" r="0.8" />
-    <circle id="leftBrow0" cx="541.6" cy="193.6" r="0.8" />
-    <circle id="leftBrow2" cx="525.8" cy="188.2" r="0.8" />
-    <circle id="leftEye5" cx="528.7" cy="213.6" r="0.8" />
-    <circle id="leftEye2" cx="522.6" cy="206" r="0.8" />
-    <circle id="leftEye3" cx="517.3" cy="210.6" r="0.8" />
-    <circle id="leftNose0" cx="509.3" cy="234.8" r="0.8" />
-    <circle id="leftMouthCorner" cx="515.6" cy="247.8" r="0.8" />
-    <circle id="leftNose1" cx="504.1" cy="234.8" r="0.8" />
-    <circle id="leftUpperLipTop0" cx="508.2" cy="244.4" r="0.8" />
-    <circle id="leftUpperLipTop1" cx="502.7" cy="243.2" r="0.8" />
-    <path id="leftMiddleLip" d="M513.4,246.9c0.4,0,0.8,0.4,0.8,0.8s-0.4,0.8-0.8,0.8c-0.4,0-0.8-0.4-0.8-0.8S513,246.9,513.4,246.9z" />
-    <circle id="leftUpperLipBottom1" cx="502.5" cy="247.1" r="0.8" />
-    <circle id="leftLowerLipTop0" cx="502.5" cy="249.8" r="0.8" />
-    <circle id="leftLowerLipBottom1" cx="502.7" cy="255.1" r="0.8" />
-    <circle id="leftLowerLipBottom0" cx="509.5" cy="252.3" r="0.8" />
-    <circle id="leftEye4" cx="522.6" cy="211.5" r="0.8" />
-    <circle id="leftJaw7" cx="513.4" cy="269.9" r="0.8" />
-    <circle id="leftJaw6" cx="524.6" cy="262.7" r="0.8" />
-    <circle id="leftJaw5" cx="537.4" cy="249.2" r="0.8" />
-    <circle id="leftJaw4" cx="545.2" cy="227.7" r="0.8" />
-    <circle id="leftJaw3" cx="546.2" cy="205" r="0.8" />
-    <circle id="leftJaw2" cx="546.2" cy="194.6" r="0.8" />
-    <circle id="leftJaw1" cx="545.2" cy="181.9" r="0.8" />
-    <circle id="leftJaw0" cx="542.7" cy="171.3" r="0.8" />
-    <polyline style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="499.1,134.1 477.1,137.4 463.6,149.6 455.3,170.9 452.6,181.6 451.6,194.2 451.6,204.5 452.6,227.4 460.4,248.9 473.2,262.4 484.3,269.6 498.9,273.1 513.4,269.9 524.6,262.7 537.4,249.2 545.2,227.7 546.2,205 546.2,194.6 545.2,181.9 542.7,171.3 534.8,149.6 521.3,137.4 499.1,134.1" />
-    <polyline style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="458.4,193.6 464.8,190 474.2,188.2 481.5,188.6 491.9,190.8" />
-    <polygon style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="466,210 471.3,206 477.4,206 482.7,210.6 477.4,211.5 471.3,213.6" />
-    <polyline style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="487.7,234.8 492.9,234.8 498.5,236.5 498.5,231.3 498.5,225.7 498.5,222.4 498.5,216.4" />
-    <polyline style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="541.6,193.6 535.2,190 525.8,188.2 518.5,188.6 508.1,190.8" />
-    <polygon style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="534,210 528.7,206 522.6,206 517.3,210.6 522.6,211.5 528.7,213.6" />
-    <polyline style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="509.3,234.8 504.1,234.8 498.5,236.5" />
-    <polygon style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="482.2,247.8 488.9,244.4 494.5,243.2 498.9,244.2 502.7,243.2 508.2,244.4 515.6,247.8 509.5,252.3 502.7,255.1 498.9,255.7 494.6,255.1 487.8,252.3" />
-    <polyline style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="482.2,247.8 484.7,248.1 494.8,247.1 498.9,247.8 502.5,247.1 513.4,248.1 515.6,247.8" />
-    <polyline style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="482.2,247.8 484.7,248.1 494.8,249.8 498.9,250.6 502.5,249.8 513.4,248.1 515.6,247.8" />
-    <circle id="rightTop0" cx="477.2" cy="137.4" r="0.8" />
-    <circle id="rightTop1" cx="463.6" cy="149.6" r="0.8" />
-  </g>
+	 width="1000px" height="1000px" viewBox="0 0 1000 1000" style="enable-background:new 0 0 1000 1000;" xml:space="preserve">
+<g id="illustration">
+	<path style="fill:#60504B;" d="M523.3,868v46.8c0,48.8,55.4,50.3,55.4,4.5v-51.8L523.3,868z"/>
+	<rect x="535.7" y="889.3" style="fill:#FFFFFF;" width="30.6" height="4.4"/>
+	<rect x="535.7" y="897.7" style="fill:#FFFFFF;" width="30.6" height="4.4"/>
+	<rect x="535.7" y="906.2" style="fill:#FFFFFF;" width="30.6" height="4.4"/>
+	<path style="fill:#60504B;" d="M420,868v46.8c0,48.8,55.4,50.3,55.4,4.5v-51.8L420,868z"/>
+	<path style="fill:#3D527F;" d="M394.4,493.8c0,66.4,0,148.9,0,228.2c0,55.8,0,110,0,155.8c56.6,0,58.8,0,99.7,0
+		c0-46.8,0-101.4,0-154.5c0-75.9,0-148.8,0-191.6c5.9,0,14.5,0,19.9,0c0,41.3,0,115.8,0,191.6c0,54.9,0,110.4,0,154.5
+		c45,0,34.6,0,91.7,0c0-43,0-97.5,0-154.5c0-79.5,0-164,0-229.5H394.4z"/>
+	<rect x="432.4" y="889.3" style="fill:#FFFFFF;" width="30.6" height="4.4"/>
+	<rect x="432.4" y="897.7" style="fill:#FFFFFF;" width="30.6" height="4.4"/>
+	<rect x="432.4" y="906.2" style="fill:#FFFFFF;" width="30.6" height="4.4"/>
+	<path style="fill:#ABD1D5;" d="M376.9,509c0-47.3,6-116.9,31.1-167.4c8.4-16.8,18.9-31.5,32-42.5c15.7-13.2,35.3-21.2,59.4-21.2
+		c26.1,0,46.9,9.2,63.4,24.3c10.3,9.4,19,21.2,26.2,34.4c27.5,50.4,34.5,122.5,34.5,172.4L376.9,509L376.9,509z"/>
+	<line style="fill:none;" x1="616.8" y1="509.6" x2="384" y2="509.6"/>
+	<ellipse style="fill:#FFFFFF;" cx="500.9" cy="304.3" rx="22" ry="16.3"/>
+	<path style="fill:#F3AF9D;" d="M843.8,326.2l17-6.8c0,0,6.1,5.5,13,11.2s-4.7,18.4-15.3,10.6C847.8,333.4,843.8,326.2,843.8,326.2z
+		"/>
+	<path style="fill:#99AFB1;" d="M285.8,267.1l3,56.8c58.9,0.3,93.5-2.3,119.3,17.7l48.7-50.2C402.5,264.7,341.8,263.7,285.8,267.1z"
+		/>
+	<path style="fill:#99AFB1;" d="M545.7,290.4l43.3,53.2c27-16.2,67.7-16.3,126.6-16.7v-56.8C659.6,266.7,616.4,259.7,545.7,290.4z"
+		/>
+	<path style="fill:#F3AF9D;" d="M291,273.7c-47.7,2.7-123.1,8.9-160.2,14.2c-37.1,5.3-40.1,40.1,5.3,39.5s95.2-3.5,159.7-12.1
+		L291,273.7z"/>
+	<path style="fill:#F3AF9D;" d="M155.6,326.2l-17-6.8c0,0-6.1,5.5-13,11.2c-6.9,5.7,4.7,18.4,15.3,10.6
+		C151.6,333.4,155.6,326.2,155.6,326.2z"/>
+	<path style="fill:#F3AF9D;" d="M709.7,318.3c64.5,8.6,113.3,11.5,158.7,12.1s42.4-34.2,5.3-39.5c-37.1-5.3-114.5-11.5-162.2-14.2
+		L709.7,318.3z"/>
+	<path style="fill:#F3AF9D;" d="M489.5,211.9h20.9c0,0,4.3,67.3,5.7,90.8c-2.1,9.7-9.1,11.3-15.5,11.1c-8.2-0.2-15.9-4.7-17.1-12.5
+		L489.5,211.9z"/>
+	<path style="fill:#DD9B8E;" d="M489.5,211.9h20.9c1.9,19-21.6,89.4-26.8,89.4L489.5,211.9z"/>
+	<path style="fill:#72605A;" d="M499,113c-27,0-89,8-56,64c24.8,42.1,88,44,110,3S549,113,499,113z"/>
+	<circle style="fill:#DF7977;" cx="560.2" cy="182.8" r="12.1"/>
+	<circle style="fill:#DF7977;" cx="437.6" cy="182.8" r="12.1"/>
+	<ellipse style="fill:#F3AF9D;" cx="499.8" cy="177.4" rx="57" ry="57.6"/>
+	<g>
+		<path id="rightMiddleLip_2_" d="M487.5,209.6c0.3,0,0.5,0.3,0.5,0.5s-0.3,0.5-0.5,0.5c-0.3,0-0.5-0.3-0.5-0.5
+			S487.3,209.6,487.5,209.6z"/>
+		<circle id="upperLipBottomMid_1_" cx="499.3" cy="209.9" r="0.5"/>
+		<circle id="rightUpperLipBottom1_1_" cx="496.8" cy="209.6" r="0.5"/>
+		<path id="leftMiddleLip_2_" d="M511.1,209.6c0.3,0,0.5,0.3,0.5,0.5s-0.3,0.5-0.5,0.5s-0.5-0.3-0.5-0.5S510.8,209.6,511.1,209.6z"
+			/>
+		<circle id="leftUpperLipBottom1_1_" cx="501.8" cy="209.6" r="0.5"/>
+		<path style="fill:#DF7977;stroke:#DF7977;stroke-width:2;stroke-miterlimit:10;" d="M488,210.1c0,0,7.7-0.1,11.3-0.1
+			s11.9-0.1,11.9-0.1s-6.9,2.6-11.9,2.6C494.2,212.5,488,210.1,488,210.1z"/>
+		<circle id="lowerLipTopMid_2_" cx="499.3" cy="211.9" r="0.5"/>
+		<circle id="rightLowerLipTop0_2_" cx="496.8" cy="211.4" r="0.5"/>
+		<circle id="leftLowerLipTop0_2_" cx="501.8" cy="211.4" r="0.5"/>
+	</g>
+	<g>
+		<ellipse style="fill:#DF7977;" cx="464.1" cy="196.5" rx="7.8" ry="6.2"/>
+		<ellipse style="fill:#2C323A;" cx="464" cy="180.6" rx="3.6" ry="5.8"/>
+		<circle id="rightEye0_1_" cx="468.6" cy="160.2" r="0.8"/>
+		<circle id="rightEye1_1_" cx="473.8" cy="156.5" r="0.8"/>
+		<circle id="rightEye5_1_" cx="473.8" cy="162.5" r="0.8"/>
+		<circle id="rightEye2_1_" cx="480.1" cy="156.5" r="0.8"/>
+		<circle id="rightEye3_1_" cx="485.3" cy="160.7" r="0.8"/>
+		<circle id="rightEye4_1_" cx="480.1" cy="161.7" r="0.8"/>
+	</g>
+	<g>
+		<ellipse style="fill:#2C323A;" cx="532.8" cy="179.6" rx="3.6" ry="5.8"/>
+		<ellipse style="fill:#DF7977;" cx="533.2" cy="196.5" rx="7.8" ry="6.2"/>
+		<circle id="leftEye0_1_" cx="528.2" cy="160.2" r="0.8"/>
+		<circle id="leftEye1_1_" cx="523" cy="156.5" r="0.8"/>
+		<circle id="leftEye5_1_" cx="523" cy="162.5" r="0.8"/>
+		<circle id="leftEye2_1_" cx="516.7" cy="156.5" r="0.8"/>
+		<circle id="leftEye3_1_" cx="511.5" cy="160.7" r="0.8"/>
+		<circle id="leftEye4_1_" cx="516.7" cy="161.7" r="0.8"/>
+	</g>
+       <g>
+               <path style="fill:#2C323A;" d="M518.8,159.9c10.7-5,14.2-5,19.2,0.7C533,159.9,532.3,163.4,518.8,159.9z"/>
+               <circle id="leftBrow1_1_" cx="530.1" cy="148.7" r="0.8"/>
+               <circle id="leftBrow4_1_" cx="506.5" cy="150.8" r="0.8"/>
+               <circle id="leftBrow3_1_" cx="516.5" cy="147.6" r="0.8"/>
+               <circle id="leftBrow0_1_" cx="534.1" cy="151.6" r="0.8"/>
+               <circle id="leftBrow2_1_" cx="523.8" cy="147.2" r="0.8"/>
+       </g>
+       <g>
+               <path style="fill:#2C323A;" d="M478,159.9c-10.7-5-14.2-5-19.2,0.7C463.8,159.9,464.5,163.4,478,159.9z"/>
+               <circle id="rightBrow1_1_" cx="466.4" cy="148.3" r="0.8"/>
+               <circle id="rightBrow4_1_" cx="489.7" cy="151.3" r="0.8"/>
+               <circle id="rightBrow3_1_" cx="479.9" cy="147.3" r="0.8"/>
+               <circle id="rightBrow0_1_" cx="462.4" cy="152" r="0.8"/>
+               <circle id="rightBrow2_1_" cx="472.6" cy="147.3" r="0.8"/>
+       </g>
+	<path style="fill:#72605A;" d="M456,138c1.9,7.7,62.3,20.7,82-3c10-12,9-22,4-25c-4.4-2.6-9-6-22,6c-1-9,1-15-16-17
+		C476.2,95.7,451.6,120,456,138z"/>
+	<g>
+		<path style="fill:#2C323A;stroke:#2C323A;stroke-width:2;stroke-miterlimit:10;" d="M496.4,185.8c-1.2,0-4.6,1.6-5.8,5.2
+			c-0.2,1.2,0.6,5.8,6,4.1c-0.1-1-4.7-1.1-4.5-3.7C492.4,189.6,494.1,189.6,496.4,185.8z"/>
+		<circle id="nose1_1_" cx="497.6" cy="161.2" r="0.8"/>
+		<circle id="nose0_1_" cx="497.6" cy="155.4" r="0.8"/>
+		<circle id="nose3_1_" cx="497.6" cy="173.8" r="0.8"/>
+		<circle id="rightNose0_1_" cx="486.9" cy="178.3" r="0.8"/>
+		<circle id="rightNose1_1_" cx="492.1" cy="178.3" r="0.8"/>
+		<circle id="nose2_1_" cx="497.6" cy="166.7" r="0.8"/>
+		<circle id="nose4_1_" cx="497.6" cy="179.1" r="0.8"/>
+		<circle id="leftNose0_1_" cx="508" cy="178.3" r="0.8"/>
+		<circle id="leftNose1_1_" cx="503.2" cy="178.3" r="0.8"/>
+	</g>
+</g>
+<g id="face_templates" style="display:none">
+       <g id="template_eye_right">
+               <ellipse style="fill:#DF7977;" cx="464.1" cy="196.5" rx="7.8" ry="6.2"/>
+               <ellipse style="fill:#2C323A;" cx="464" cy="180.6" rx="3.6" ry="5.8"/>
+       </g>
+       <g id="template_eye_left">
+               <ellipse style="fill:#2C323A;" cx="532.8" cy="179.6" rx="3.6" ry="5.8"/>
+               <ellipse style="fill:#DF7977;" cx="533.2" cy="196.5" rx="7.8" ry="6.2"/>
+       </g>
+       <g id="template_brow_right">
+               <path style="fill:#2C323A;" d="M478,159.9c-10.7-5-14.2-5-19.2,0.7C463.8,159.9,464.5,163.4,478,159.9z"/>
+       </g>
+       <g id="template_brow_left">
+               <path style="fill:#2C323A;" d="M518.8,159.9c10.7-5,14.2-5,19.2,0.7C533,159.9,532.3,163.4,518.8,159.9z"/>
+       </g>
+       <g id="template_nose">
+               <path style="fill:#2C323A;stroke:#2C323A;stroke-width:2;stroke-miterlimit:10;" d="M496.4,185.8c-1.2,0-4.6,1.6-5.8,5.2
+                        c-0.2,1.2,0.6,5.8,6,4.1c-0.1-1-4.7-1.1-4.5-3.7C492.4,189.6,494.1,189.6,496.4,185.8z"/>
+       </g>
+       <g id="template_mouth">
+               <path style="fill:#DF7977;stroke:#DF7977;stroke-width:2;stroke-miterlimit:10;" d="M488,210.1c0,0,7.7-0.1,11.3-0.1
+                        s11.9-0.1,11.9-0.1s-6.9,2.6-11.9,2.6C494.2,212.5,488,210.1,488,210.1z"/>
+       </g>
+</g>
+<g id="skeleton_1_">
+	<circle id="rightShoulder" cx="392.8" cy="294.3" r="8.2"/>
+	<circle id="rightElbow" cx="289.3" cy="294.4" r="8.2"/>
+	
+		<ellipse id="rightWrist" transform="matrix(0.9951 -9.853767e-02 9.853767e-02 0.9951 -29.0274 13.8698)" cx="125.9" cy="300.8" rx="8.2" ry="8.2"/>
+	<circle id="rightHip" cx="443.1" cy="510.1" r="8.2"/>
+	<circle id="rightKnee" cx="449.5" cy="670.3" r="8.2"/>
+	<circle id="rightAnkle" cx="449.5" cy="878.3" r="8.2"/>
+	<circle id="leftShoulder" cx="605.7" cy="294.3" r="8.2"/>
+	<circle id="leftElbow" cx="710.1" cy="294" r="8.2"/>
+	<circle id="leftWrist" cx="873.5" cy="300.3" r="8.2"/>
+	<circle id="leftHip" cx="559.5" cy="509.3" r="8.2"/>
+	<circle id="leftKnee" cx="559.5" cy="670.3" r="8.2"/>
+	<circle id="leftAnkle" cx="559.5" cy="878.3" r="8.2"/>
+	<polygon style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="392.7,294.6 443,510.4 559.4,509.6 605.6,294.6 	"/>
+	<polyline style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="391.7,294.6 289,294.6 125.7,300.9 	"/>
+	<polyline style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="607.1,294.2 710.3,294.2 873.6,300.6 	"/>
+	<polyline style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="443,510.4 449.4,670.6 449.4,878.6 	"/>
+	<polyline style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="559.4,509.6 559.4,670.6 559.4,878.6 	"/>
+	<circle id="rightEye0" cx="468.6" cy="160.2" r="0.8"/>
+	<circle id="rightBrow1" cx="466.4" cy="148.3" r="0.8"/>
+	<circle id="rightBrow4" cx="489.7" cy="151.3" r="0.8"/>
+	<circle id="nose1" cx="497.6" cy="161.2" r="0.8"/>
+	<circle id="rightBrow3" cx="479.9" cy="147.3" r="0.8"/>
+	<circle id="rightEye1" cx="473.8" cy="156.5" r="0.8"/>
+	<circle id="rightBrow0" cx="462.4" cy="152" r="0.8"/>
+	<circle id="rightBrow2" cx="472.6" cy="147.3" r="0.8"/>
+	<circle id="rightEye5" cx="473.8" cy="162.5" r="0.8"/>
+	<circle id="rightEye2" cx="480.1" cy="156.5" r="0.8"/>
+	<circle id="rightEye3" cx="485.3" cy="160.7" r="0.8"/>
+	<circle id="nose0" cx="497.6" cy="155.4" r="0.8"/>
+	<circle id="nose3" cx="497.6" cy="173.8" r="0.8"/>
+	<circle id="rightNose0" cx="486.9" cy="178.3" r="0.8"/>
+	<circle id="rightMouthCorner" cx="480.9" cy="200.4" r="0.8"/>
+	<circle id="rightNose1" cx="492.1" cy="178.3" r="0.8"/>
+	<circle id="rightUpperLipTop0" cx="487.8" cy="197" r="0.8"/>
+	<circle id="nose2" cx="497.6" cy="166.7" r="0.8"/>
+	<circle id="nose4" cx="497.6" cy="179.1" r="0.8"/>
+	<circle id="upperLipTopMid" cx="498.4" cy="196.8" r="0.8"/>
+	<circle id="rightUpperLipTop1" cx="494.3" cy="195.9" r="0.8"/>
+	<path id="rightMiddleLip" d="M484.5,199.9c0.4,0,0.8,0.4,0.8,0.8c0,0.4-0.4,0.8-0.8,0.8s-0.8-0.4-0.8-0.8S484.1,199.9,484.5,199.9z
+		"/>
+	<circle id="lowerLipBottomMid" cx="498.4" cy="210" r="0.8"/>
+	<circle id="upperLipBottomMid" cx="498.4" cy="200.4" r="0.8"/>
+	<circle id="lowerLipTopMid" cx="498.4" cy="203.5" r="0.8"/>
+	<circle id="rightUpperLipBottom1" cx="494.5" cy="199.9" r="0.8"/>
+	<circle id="rightLowerLipTop0" cx="494.5" cy="202.8" r="0.8"/>
+	<circle id="rightLowerLipBottom1" cx="494.3" cy="209.5" r="0.8"/>
+	<circle id="rightLowerLipBottom0" cx="487.3" cy="206.7" r="0.8"/>
+	<circle id="rightEye4" cx="480.1" cy="161.7" r="0.8"/>
+	<circle id="jawMid" cx="498.4" cy="235.8" r="0.8"/>
+	<circle id="rightJaw7" cx="483.4" cy="232.6" r="0.8"/>
+	<circle id="rightJaw6" cx="473.4" cy="225.9" r="0.8"/>
+	<circle id="rightJaw5" cx="461.8" cy="213.4" r="0.8"/>
+	<circle id="rightJaw4" cx="455" cy="193.4" r="0.8"/>
+	<circle id="rightJaw3" cx="454.2" cy="171.7" r="0.8"/>
+	<circle id="rightJaw2" cx="454.2" cy="162.2" r="0.8"/>
+	<circle id="rightJaw1" cx="455" cy="150.5" r="0.8"/>
+	<circle id="rightJaw0" cx="457.5" cy="141.2" r="0.8"/>
+	<circle id="topMid" cx="498.6" cy="115.1" r="0.8"/>
+	<circle id="leftTop0" cx="518.3" cy="117.6" r="0.8"/>
+	<circle id="leftTop1" cx="530.9" cy="127.1" r="0.8"/>
+	<circle id="leftEye0" cx="528.2" cy="160.2" r="0.8"/>
+	<circle id="leftBrow1" cx="530.1" cy="148.7" r="0.8"/>
+	<circle id="leftBrow4" cx="506.5" cy="150.8" r="0.8"/>
+	<circle id="leftBrow3" cx="516.5" cy="147.6" r="0.8"/>
+	<circle id="leftEye1" cx="523" cy="156.5" r="0.8"/>
+	<circle id="leftBrow0" cx="534.1" cy="151.6" r="0.8"/>
+	<circle id="leftBrow2" cx="523.8" cy="147.2" r="0.8"/>
+	<circle id="leftEye5" cx="523" cy="162.5" r="0.8"/>
+	<circle id="leftEye2" cx="516.7" cy="156.5" r="0.8"/>
+	<circle id="leftEye3" cx="511.5" cy="160.7" r="0.8"/>
+	<circle id="leftNose0" cx="508" cy="178.3" r="0.8"/>
+	<circle id="leftMouthCorner" cx="515.9" cy="200.4" r="0.8"/>
+	<circle id="leftNose1" cx="503.2" cy="178.3" r="0.8"/>
+	<circle id="leftUpperLipTop0" cx="509" cy="197" r="0.8"/>
+	<circle id="leftUpperLipTop1" cx="502.6" cy="195.9" r="0.8"/>
+	<path id="leftMiddleLip" d="M512.3,199.9c0.4,0,0.8,0.4,0.8,0.8c0,0.4-0.4,0.8-0.8,0.8c-0.4,0-0.8-0.4-0.8-0.8
+		S511.9,199.9,512.3,199.9z"/>
+	<circle id="leftUpperLipBottom1" cx="502.4" cy="199.9" r="0.8"/>
+	<circle id="leftLowerLipTop0" cx="502.4" cy="202.8" r="0.8"/>
+	<circle id="leftLowerLipBottom1" cx="502.6" cy="209.5" r="0.8"/>
+	<circle id="leftLowerLipBottom0" cx="509.5" cy="206.7" r="0.8"/>
+	<circle id="leftEye4" cx="516.7" cy="161.7" r="0.8"/>
+	<circle id="leftJaw7" cx="513.2" cy="233" r="0.8"/>
+	<circle id="leftJaw6" cx="523.2" cy="226.3" r="0.8"/>
+	<circle id="leftJaw5" cx="534.8" cy="213.7" r="0.8"/>
+	<circle id="leftJaw4" cx="541.6" cy="193.7" r="0.8"/>
+	<circle id="leftJaw3" cx="542.4" cy="172.1" r="0.8"/>
+	<circle id="leftJaw2" cx="542.4" cy="162.5" r="0.8"/>
+	<circle id="leftJaw1" cx="541.6" cy="150.8" r="0.8"/>
+	<circle id="leftJaw0" cx="539.1" cy="141.6" r="0.8"/>
+	<polyline style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="498.4,115.1 478.6,117.6 466.1,127.1 457.5,141.2 
+		455,150.5 454.2,162.2 454.2,171.7 455,193.4 461.8,213.4 473.4,225.9 483.4,232.6 498.4,235.8 513.2,233 523.2,226.3 534.8,213.7 
+		541.6,193.7 542.4,172.1 542.4,162.5 541.6,150.8 539.1,141.6 530.9,127.1 518.3,117.6 498.4,115.1 	"/>
+	<polyline style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="462.4,152 466.4,148.3 472.6,147.3 479.9,147.3 
+		489.7,151.3 	"/>
+	<polygon style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="468.6,160.2 473.8,156.5 480.1,156.5 485.3,160.7 
+		480.1,161.7 473.8,162.5 	"/>
+	<polyline style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="486.9,178.3 492.1,178.3 497.6,179.1 497.6,173.8 
+		497.6,166.7 497.6,161.2 497.6,155.4 	"/>
+	<polyline style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="533.9,151.6 529.9,148.7 523.6,147.2 516.3,147.6 
+		506.3,150.8 	"/>
+	<polygon style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="528,160.2 522.7,156.5 516.4,156.5 511.3,160.7 
+		516.4,161.7 522.7,162.5 	"/>
+	<polyline style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="508,178.3 503,178.3 497.6,179.1 	"/>
+	<polygon style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="480.9,200.4 487.8,197 494.3,195.9 498.4,196.8 
+		502.6,195.9 509,197 515.9,200.4 509.5,206.7 502.4,209.5 498.4,210 494.3,209.5 487.3,206.7 	"/>
+	<polyline style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="480.9,200.4 484.5,200.7 494.5,199.9 498.4,200.4 
+		502.4,199.9 512.3,200.7 515.9,200.4 	"/>
+	<polyline style="fill:none;stroke:#000000;stroke-miterlimit:10;" points="480.9,200.4 484.5,200.7 494.5,202.8 498.4,203.6 
+		502.4,202.8 512.3,200.7 515.9,200.4 	"/>
+	<circle id="rightTop0" cx="478.7" cy="117.6" r="0.8"/>
+	<circle id="rightTop1" cx="466.1" cy="127.1" r="0.8"/>
+</g>
 </svg>

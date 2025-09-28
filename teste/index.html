@@ -592,6 +592,68 @@
       left: { upper: null, lower: null, ready: false, warningShown: false, base: { upper: null, lower: null } },
       right: { upper: null, lower: null, ready: false, warningShown: false, base: { upper: null, lower: null } }
     };
+    function normalizePuppetStructure() {
+      if (!svgEl) return;
+      const illustration = svgEl.getElementById('illustration');
+      if (!illustration) return;
+
+      const existingBody = svgEl.getElementById('puppet_body');
+      const existingHead = svgEl.getElementById('puppet_head_base');
+      const bodyGroup = existingBody || document.createElementNS(NS, 'g');
+      const headGroup = existingHead || document.createElementNS(NS, 'g');
+
+      if (!existingBody) {
+        bodyGroup.id = 'puppet_body';
+      }
+      if (!existingHead) {
+        headGroup.id = 'puppet_head_base';
+      }
+
+      const headNodes = [];
+      const bodyNodes = [];
+      const HEAD_THRESHOLD = 330;
+      const skipIds = new Set(['face_overlay_layer']);
+
+      const children = Array.from(illustration.children);
+      children.forEach((node) => {
+        if (node === bodyGroup || node === headGroup) return;
+        if (node.nodeType !== 1) return;
+        if (skipIds.has(node.id)) return;
+        if (node.id === 'face_templates') return;
+        const bbox = typeof node.getBBox === 'function' ? node.getBBox() : null;
+        const centerY = bbox ? bbox.y + bbox.height / 2 : Number.POSITIVE_INFINITY;
+        if (centerY < HEAD_THRESHOLD) headNodes.push(node);
+        else bodyNodes.push(node);
+      });
+
+      if (!existingBody) {
+        illustration.insertBefore(bodyGroup, illustration.firstChild);
+      }
+      if (!existingHead) {
+        illustration.appendChild(headGroup);
+      }
+
+      headNodes.forEach((node) => {
+        if (node.parentNode !== headGroup) headGroup.appendChild(node);
+      });
+      bodyNodes.forEach((node) => {
+        if (node.parentNode !== bodyGroup) bodyGroup.appendChild(node);
+      });
+
+      let headFront = svgEl.getElementById('puppet_head_front');
+      if (!headFront) {
+        headFront = document.createElementNS(NS, 'g');
+        headFront.id = 'puppet_head_front';
+        headGroup.parentNode.insertBefore(headFront, headGroup.nextSibling);
+      }
+
+      Array.from(headGroup.children).forEach((child) => {
+        const tag = child.tagName ? child.tagName.toLowerCase() : '';
+        if (tag === 'g' && !child.id) {
+          child.style.display = 'none';
+        }
+      });
+    }
     const lastArmRigs = { left: null, right: null };
     const lastArmMatrices = {
       left: { upper: null, lower: null },
@@ -1565,6 +1627,7 @@
         svgEl.setAttribute('preserveAspectRatio', 'xMidYMid meet');
         svgEl.style.width = '100%';
         svgEl.style.height = 'auto';
+        normalizePuppetStructure();
         faceTemplatesRoot = svgEl.getElementById('face_templates');
         updatePuppetMeasurementsFromSkeleton();
         if (faceTemplatesRoot) {
@@ -1610,19 +1673,21 @@
         armPaths.left = document.createElementNS(NS, 'path');
         armPaths.left.id = 'L_arm_path';
         armPaths.left.setAttribute('fill', 'none');
-        armPaths.left.setAttribute('stroke', '#4a8bff');
-        armPaths.left.setAttribute('stroke-width', '18');
+        armPaths.left.setAttribute('stroke', '#99AFB1');
+        armPaths.left.setAttribute('stroke-width', '64');
         armPaths.left.setAttribute('stroke-linecap', 'round');
         armPaths.left.setAttribute('stroke-linejoin', 'round');
+        armPaths.left.setAttribute('stroke-opacity', '0.95');
         svgEl.appendChild(armPaths.left);
 
         armPaths.right = document.createElementNS(NS, 'path');
         armPaths.right.id = 'R_arm_path';
         armPaths.right.setAttribute('fill', 'none');
-        armPaths.right.setAttribute('stroke', '#4a8bff');
-        armPaths.right.setAttribute('stroke-width', '18');
+        armPaths.right.setAttribute('stroke', '#99AFB1');
+        armPaths.right.setAttribute('stroke-width', '64');
         armPaths.right.setAttribute('stroke-linecap', 'round');
         armPaths.right.setAttribute('stroke-linejoin', 'round');
+        armPaths.right.setAttribute('stroke-opacity', '0.95');
         svgEl.appendChild(armPaths.right);
         segments.left.upper = seg('L_upper');
         segments.left.lower = seg('L_lower');
