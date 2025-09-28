@@ -236,24 +236,23 @@
     const PUPPET_LEFT_WR = { x: 873.5, y: 300.3 };
     const PUPPET_RIGHT_EL = { x: 289.3, y: 294.4 };
     const PUPPET_RIGHT_WR = { x: 125.9, y: 300.8 };
-    const PUPPET_SHOULDER_SPAN = PUPPET_LEFT_SH.x - PUPPET_RIGHT_SH.x;
     const PUPPET_SHOULDERS_MID = {
       x: (PUPPET_LEFT_SH.x + PUPPET_RIGHT_SH.x) / 2,
       y: PUPPET_LEFT_SH.y
     };
-    const PUPPET_UPPER_ARM_LEN = dist(PUPPET_LEFT_SH, PUPPET_LEFT_EL);
-    const PUPPET_LOWER_ARM_LEN = dist(PUPPET_LEFT_EL, PUPPET_LEFT_WR);
-    const PUPPET_RIGHT_UPPER_ARM_LEN = dist(PUPPET_RIGHT_SH, PUPPET_RIGHT_EL);
-    const PUPPET_RIGHT_LOWER_ARM_LEN = dist(PUPPET_RIGHT_EL, PUPPET_RIGHT_WR);
+    let PUPPET_UPPER_ARM_LEN = dist(PUPPET_LEFT_SH, PUPPET_LEFT_EL);
+    let PUPPET_LOWER_ARM_LEN = dist(PUPPET_LEFT_EL, PUPPET_LEFT_WR);
+    let PUPPET_RIGHT_UPPER_ARM_LEN = dist(PUPPET_RIGHT_SH, PUPPET_RIGHT_EL);
+    let PUPPET_RIGHT_LOWER_ARM_LEN = dist(PUPPET_RIGHT_EL, PUPPET_RIGHT_WR);
     const PUPPET_LEFT_HIP = { x: 559.5, y: 509.3 };
     const PUPPET_RIGHT_HIP = { x: 443.1, y: 510.1 };
-    const PUPPET_HIP_SPAN = dist(PUPPET_LEFT_HIP, PUPPET_RIGHT_HIP);
-    const PUPPET_TORSO_CENTER_LEN = dist(
+    let PUPPET_HIP_SPAN = dist(PUPPET_LEFT_HIP, PUPPET_RIGHT_HIP);
+    let PUPPET_TORSO_CENTER_LEN = dist(
       PUPPET_SHOULDERS_MID,
       mid(PUPPET_LEFT_HIP, PUPPET_RIGHT_HIP)
     );
-    const PUPPET_LEFT_TORSO_LEN = dist(PUPPET_LEFT_SH, PUPPET_LEFT_HIP);
-    const PUPPET_RIGHT_TORSO_LEN = dist(PUPPET_RIGHT_SH, PUPPET_RIGHT_HIP);
+    let PUPPET_LEFT_TORSO_LEN = dist(PUPPET_LEFT_SH, PUPPET_LEFT_HIP);
+    let PUPPET_RIGHT_TORSO_LEN = dist(PUPPET_RIGHT_SH, PUPPET_RIGHT_HIP);
     const PUPPET_BODY_BASE = [
       { ...PUPPET_RIGHT_SH },
       { ...PUPPET_LEFT_SH },
@@ -279,6 +278,7 @@
       body: true,
       face: true
     };
+    let faceTemplatesRoot = null;
     let faceOverlayLayer = null;
     let headTargets = [];
     let bodyTargets = [];
@@ -287,8 +287,19 @@
     let lastRigMatrix = null;
     const HEAD_ANCHOR_ID = 'jawMid';
     const FACE_ANCHOR_ADJUST = { x: 0, y: 6 };
+    const FACE_TEMPLATE_POINT_PAIRS = [
+      { skeleton: 'upperLipBottomMid', template: 'upperLipBottomMid_1_' },
+      { skeleton: 'lowerLipTopMid', template: 'lowerLipTopMid_2_' },
+      { skeleton: 'rightEye0', template: 'rightEye0_1_' },
+      { skeleton: 'leftEye0', template: 'leftEye0_1_' },
+      { skeleton: 'nose4', template: 'nose4_1_' },
+      { skeleton: 'rightBrow2', template: 'rightBrow2_1_' },
+      { skeleton: 'leftBrow2', template: 'leftBrow2_1_' }
+    ];
     let headAnchorBase = null;
     let headAnchorOffset = null;
+    const VALIDATION_TOLERANCE = 12;
+    const validationNotified = new Set();
 
     const EMA = (prev, cur, a = 0.35) => {
       if (!prev) return cur;
@@ -460,6 +471,28 @@
       };
     }
 
+    function validateSegment(label, basePoints, targetPoints, matrix) {
+      if (!matrix || !Array.isArray(basePoints) || !Array.isArray(targetPoints)) return;
+      const count = Math.min(basePoints.length, targetPoints.length);
+      if (!count) return;
+      let maxError = 0;
+      for (let i = 0; i < count; i += 1) {
+        const source = basePoints[i];
+        const target = targetPoints[i];
+        if (!source || !target) continue;
+        const transformed = transformPoint(matrix, source);
+        if (!transformed) continue;
+        const error = dist(transformed, target);
+        if (error > maxError) {
+          maxError = error;
+        }
+      }
+      if (maxError > VALIDATION_TOLERANCE && !validationNotified.has(label)) {
+        console.warn(`Alinhamento do segmento ${label} excedeu a tolerância (${formatFloat(maxError)}px).`);
+        validationNotified.add(label);
+      }
+    }
+
     function applyHeadTransform(matrix) {
       if (!headTargets.length) return;
       if (matrix) {
@@ -556,14 +589,68 @@
     const armPaths = { left: null, right: null };
     let running = false;
     const puppetArms = {
-      left: { upper: null, lower: null, ready: false, warningShown: false },
-      right: { upper: null, lower: null, ready: false, warningShown: false }
+      left: { upper: null, lower: null, ready: false, warningShown: false, base: { upper: null, lower: null } },
+      right: { upper: null, lower: null, ready: false, warningShown: false, base: { upper: null, lower: null } }
     };
     const lastArmRigs = { left: null, right: null };
     const lastArmMatrices = {
       left: { upper: null, lower: null },
       right: { upper: null, lower: null }
     };
+
+    function configureArmElement(el) {
+      if (!el) return;
+      el.style.transformBox = 'fill-box';
+      el.style.transformOrigin = '50% 50%';
+      el.removeAttribute('transform');
+      el.style.transform = '';
+    }
+
+    function ensurePuppetArm(side) {
+      const arm = puppetArms[side];
+      const bases = PUPPET_ARM_BASES?.[side];
+      if (!arm || !bases) {
+        if (arm) arm.ready = false;
+        return false;
+      }
+      const { upper, lower } = arm;
+      if (!upper || !lower) {
+        arm.ready = false;
+        return false;
+      }
+      configureArmElement(upper);
+      configureArmElement(lower);
+      arm.base.upper = bases.upper ? bases.upper.map((pt) => ({ x: pt.x, y: pt.y })) : null;
+      arm.base.lower = bases.lower ? bases.lower.map((pt) => ({ x: pt.x, y: pt.y })) : null;
+      arm.ready = Boolean(arm.base.upper && arm.base.lower);
+      if (!arm.ready) {
+        return false;
+      }
+      lastArmMatrices[side].upper = null;
+      lastArmMatrices[side].lower = null;
+      return true;
+    }
+
+    function applyArmRig(side, rig) {
+      const arm = puppetArms[side];
+      if (!arm || !arm.ready || !rig) return;
+      const bases = arm.base || {};
+      const { A, B, C } = rig;
+      if (A && B && arm.upper) {
+        const matrix = rotatePuppetSegment(arm.upper, A, B, side, 'upper');
+        if (matrix) {
+          const baseSegment = bases.upper || PUPPET_ARM_BASES?.[side]?.upper || [];
+          validateSegment(`arm-${side}-upper`, baseSegment, [A, B], matrix);
+        }
+      }
+      if (B && C && arm.lower) {
+        const matrix = rotatePuppetSegment(arm.lower, B, C, side, 'lower');
+        if (matrix) {
+          const baseSegment = bases.lower || PUPPET_ARM_BASES?.[side]?.lower || [];
+          validateSegment(`arm-${side}-lower`, baseSegment, [B, C], matrix);
+        }
+      }
+    }
 
     function seg(id, stroke = '#4a8bff', width = 10) {
       const line = document.createElementNS(NS, 'line');
@@ -589,6 +676,100 @@
       return poly;
     }
 
+    function recomputePuppetMeasurements() {
+      PUPPET_SHOULDERS_MID.x = (PUPPET_LEFT_SH.x + PUPPET_RIGHT_SH.x) / 2;
+      PUPPET_SHOULDERS_MID.y = (PUPPET_LEFT_SH.y + PUPPET_RIGHT_SH.y) / 2;
+      PUPPET_UPPER_ARM_LEN = dist(PUPPET_LEFT_SH, PUPPET_LEFT_EL);
+      PUPPET_LOWER_ARM_LEN = dist(PUPPET_LEFT_EL, PUPPET_LEFT_WR);
+      PUPPET_RIGHT_UPPER_ARM_LEN = dist(PUPPET_RIGHT_SH, PUPPET_RIGHT_EL);
+      PUPPET_RIGHT_LOWER_ARM_LEN = dist(PUPPET_RIGHT_EL, PUPPET_RIGHT_WR);
+      PUPPET_HIP_SPAN = dist(PUPPET_LEFT_HIP, PUPPET_RIGHT_HIP);
+      PUPPET_TORSO_CENTER_LEN = dist(
+        PUPPET_SHOULDERS_MID,
+        mid(PUPPET_LEFT_HIP, PUPPET_RIGHT_HIP)
+      );
+      PUPPET_LEFT_TORSO_LEN = dist(PUPPET_LEFT_SH, PUPPET_LEFT_HIP);
+      PUPPET_RIGHT_TORSO_LEN = dist(PUPPET_RIGHT_SH, PUPPET_RIGHT_HIP);
+
+      const bodySources = [
+        PUPPET_RIGHT_SH,
+        PUPPET_LEFT_SH,
+        PUPPET_RIGHT_HIP,
+        PUPPET_LEFT_HIP
+      ];
+      for (let i = 0; i < PUPPET_BODY_BASE.length && i < bodySources.length; i += 1) {
+        const source = bodySources[i];
+        const target = PUPPET_BODY_BASE[i];
+        if (!source || !target) continue;
+        target.x = source.x;
+        target.y = source.y;
+      }
+
+      const updateArmBase = (side, start, mid, end) => {
+        if (!PUPPET_ARM_BASES?.[side]) return;
+        const upper = PUPPET_ARM_BASES[side].upper;
+        const lower = PUPPET_ARM_BASES[side].lower;
+        if (upper) {
+          if (upper[0]) { upper[0].x = start.x; upper[0].y = start.y; }
+          if (upper[1]) { upper[1].x = mid.x; upper[1].y = mid.y; }
+        }
+        if (lower) {
+          if (lower[0]) { lower[0].x = mid.x; lower[0].y = mid.y; }
+          if (lower[1]) { lower[1].x = end.x; lower[1].y = end.y; }
+        }
+      };
+
+      updateArmBase('left', PUPPET_LEFT_SH, PUPPET_LEFT_EL, PUPPET_LEFT_WR);
+      updateArmBase('right', PUPPET_RIGHT_SH, PUPPET_RIGHT_EL, PUPPET_RIGHT_WR);
+    }
+
+    function updatePuppetMeasurementsFromSkeleton() {
+      const overrides = {
+        leftShoulder: readPoint('leftShoulder'),
+        rightShoulder: readPoint('rightShoulder'),
+        leftElbow: readPoint('leftElbow'),
+        rightElbow: readPoint('rightElbow'),
+        leftWrist: readPoint('leftWrist'),
+        rightWrist: readPoint('rightWrist'),
+        leftHip: readPoint('leftHip'),
+        rightHip: readPoint('rightHip')
+      };
+
+      if (overrides.leftShoulder) Object.assign(PUPPET_LEFT_SH, overrides.leftShoulder);
+      if (overrides.rightShoulder) Object.assign(PUPPET_RIGHT_SH, overrides.rightShoulder);
+      if (overrides.leftElbow) Object.assign(PUPPET_LEFT_EL, overrides.leftElbow);
+      if (overrides.rightElbow) Object.assign(PUPPET_RIGHT_EL, overrides.rightElbow);
+      if (overrides.leftWrist) Object.assign(PUPPET_LEFT_WR, overrides.leftWrist);
+      if (overrides.rightWrist) Object.assign(PUPPET_RIGHT_WR, overrides.rightWrist);
+      if (overrides.leftHip) Object.assign(PUPPET_LEFT_HIP, overrides.leftHip);
+      if (overrides.rightHip) Object.assign(PUPPET_RIGHT_HIP, overrides.rightHip);
+
+      recomputePuppetMeasurements();
+    }
+
+    function computeFaceAnchorAdjustments() {
+      if (!faceTemplatesRoot) return;
+      const deltas = [];
+      for (const pair of FACE_TEMPLATE_POINT_PAIRS) {
+        const base = readPoint(pair.skeleton);
+        const templatePt = readTemplatePoint(pair.template);
+        if (!base || !templatePt) continue;
+        deltas.push({
+          x: templatePt.x - base.x,
+          y: templatePt.y - base.y
+        });
+      }
+      if (!deltas.length) return;
+      let sumX = 0;
+      let sumY = 0;
+      for (const delta of deltas) {
+        sumX += delta.x;
+        sumY += delta.y;
+      }
+      FACE_ANCHOR_ADJUST.x = sumX / deltas.length;
+      FACE_ANCHOR_ADJUST.y = sumY / deltas.length;
+    }
+
     const faceFeatureRegistry = new Map();
 
     function appendToFaceOverlay(element) {
@@ -602,54 +783,69 @@
       return element;
     }
 
-    function createPathElement(id, attributes = {}) {
-      const path = document.createElementNS(NS, 'path');
-      if (id) path.id = id;
-      for (const [key, value] of Object.entries(attributes)) {
-        path.setAttribute(key, value);
-      }
-      appendToFaceOverlay(path);
-      return path;
-    }
-
-    function createGroupElement(id) {
-      const group = document.createElementNS(NS, 'g');
-      if (id) group.id = id;
-      appendToFaceOverlay(group);
-      return group;
-    }
-
     function createBrowHandler(options = {}) {
-      const path = createPathElement(options.id, {
+      const template = cloneTemplateNode(options.templateId || '');
+      const path = template && template.tagName?.toLowerCase() === 'path'
+        ? template
+        : document.createElementNS(NS, 'path');
+      applyTemplateStyles(template, path, ['fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin'], {
         fill: 'none',
         stroke: options.stroke || '#2C323A',
         'stroke-width': options.strokeWidth ?? 12,
         'stroke-linecap': 'round',
         'stroke-linejoin': 'round'
       });
-
+      appendToFaceOverlay(path);
+      if (options.id && !path.id) path.id = options.id;
+      const state = {
+        base: Array.isArray(options.fallback)
+          ? options.fallback.map((pt) => ({ x: pt.x, y: pt.y }))
+          : null
+      };
       return {
         el: path,
+        setBase(points) {
+          if (Array.isArray(points)) {
+            state.base = points.map((pt) => ({ x: pt.x, y: pt.y }));
+          }
+        },
         update({ points }) {
-          if (!Array.isArray(points) || points.length < 2) return;
-          const data = buildSmoothPath(points, { closed: false, tension: options.tension ?? 0.6 });
+          const pts = Array.isArray(points) && points.length >= 2 ? points : state.base;
+          if (!pts || pts.length < 2) return;
+          // Preserve the template styling while redrawing the brow to match the debug polyline.
+          const data = buildSmoothPath(pts, { closed: false, tension: options.tension ?? 0.6 });
           path.setAttribute('d', data);
         }
       };
     }
 
     function createEyeHandler(options = {}) {
-      const group = createGroupElement(options.id);
+      const template = cloneTemplateNode(options.templateId || '');
+      const templateShapes = template ? Array.from(template.querySelectorAll('ellipse, path')) : [];
+      const eyelidSource = templateShapes[0] || null;
+      const pupilSource = templateShapes[1] || null;
+      const group = template && template.tagName?.toLowerCase() === 'g'
+        ? template
+        : document.createElementNS(NS, 'g');
+      group.innerHTML = '';
+      appendToFaceOverlay(group);
+      if (options.id) group.id = options.id;
+
       const outer = document.createElementNS(NS, 'path');
-      outer.setAttribute('fill', options.fill || '#FFFFFF');
-      outer.setAttribute('stroke', options.stroke || '#2C323A');
-      outer.setAttribute('stroke-width', options.strokeWidth ?? 4);
-      outer.setAttribute('stroke-linejoin', 'round');
-      outer.setAttribute('stroke-linecap', 'round');
+      applyTemplateStyles(eyelidSource, outer, ['fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin'], {
+        fill: options.fill || '#FFFFFF',
+        stroke: options.stroke || '#2C323A',
+        'stroke-width': options.strokeWidth ?? 4,
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round'
+      });
       group.appendChild(outer);
 
       const pupil = document.createElementNS(NS, 'circle');
-      pupil.setAttribute('fill', options.pupilFill || '#2C323A');
+      applyTemplateStyles(pupilSource, pupil, ['fill'], {
+        fill: options.pupilFill || '#2C323A'
+      });
+      pupil.setAttribute('stroke', 'none');
       group.appendChild(pupil);
 
       const highlight = document.createElementNS(NS, 'circle');
@@ -657,11 +853,24 @@
       highlight.setAttribute('opacity', options.highlightOpacity ?? 0.6);
       group.appendChild(highlight);
 
+      const state = {
+        base: Array.isArray(options.fallback)
+          ? options.fallback.map((pt) => ({ x: pt.x, y: pt.y }))
+          : null
+      };
+
       return {
         el: group,
+        setBase(points) {
+          if (Array.isArray(points)) {
+            state.base = points.map((pt) => ({ x: pt.x, y: pt.y }));
+          }
+        },
         update({ points }) {
-          const pts = normalizeLoopPoints(points);
+          const ptsRaw = Array.isArray(points) && points.length ? points : state.base;
+          const pts = normalizeLoopPoints(ptsRaw || []);
           if (!Array.isArray(pts) || pts.length < 3) return;
+          // Rebuild the eyelid path each frame so the cloned eye keeps the template colours but matches the guide.
           const tension = options.tension ?? 0.75;
           const pathData = buildSmoothPath(pts, { closed: true, tension });
           outer.setAttribute('d', pathData);
@@ -699,31 +908,55 @@
     }
 
     function createNoseHandler(options = {}) {
-      const group = createGroupElement(options.id);
+      const template = cloneTemplateNode(options.templateId || '');
+      const group = template && template.tagName?.toLowerCase() === 'g'
+        ? template
+        : document.createElementNS(NS, 'g');
+      group.innerHTML = '';
+      appendToFaceOverlay(group);
+      if (options.id) group.id = options.id;
+
       const bridge = document.createElementNS(NS, 'path');
+      applyTemplateStyles(template, bridge, ['stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin'], {
+        stroke: options.stroke || '#2C323A',
+        'stroke-width': options.bridgeWidth ?? 3,
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round'
+      });
       bridge.setAttribute('fill', 'none');
-      bridge.setAttribute('stroke', options.stroke || '#2C323A');
-      bridge.setAttribute('stroke-width', options.bridgeWidth ?? 3);
-      bridge.setAttribute('stroke-linecap', 'round');
-      bridge.setAttribute('stroke-linejoin', 'round');
       bridge.style.display = 'none';
       group.appendChild(bridge);
 
       const base = document.createElementNS(NS, 'path');
+      applyTemplateStyles(template, base, ['stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin'], {
+        stroke: options.stroke || '#2C323A',
+        'stroke-width': options.baseWidth ?? 3.8,
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round'
+      });
       base.setAttribute('fill', 'none');
-      base.setAttribute('stroke', options.stroke || '#2C323A');
-      base.setAttribute('stroke-width', options.baseWidth ?? 3.8);
-      base.setAttribute('stroke-linecap', 'round');
-      base.setAttribute('stroke-linejoin', 'round');
       base.style.display = 'none';
       group.appendChild(base);
 
+      const state = {
+        base: Array.isArray(options.fallback)
+          ? options.fallback.map((pt) => ({ x: pt.x, y: pt.y }))
+          : null
+      };
+
       return {
         el: group,
+        setBase(points) {
+          if (Array.isArray(points)) {
+            state.base = points.map((pt) => ({ x: pt.x, y: pt.y }));
+          }
+        },
         update({ points, part }) {
-          if (!Array.isArray(points) || points.length < 2) return;
+          const pts = Array.isArray(points) && points.length >= 2 ? points : state.base;
+          if (!pts || pts.length < 2) return;
+          // Apply the template's stroke to a freshly generated curve that follows the live guide points.
           const tension = part === 'base' ? options.baseTension ?? 0.55 : options.bridgeTension ?? 0.35;
-          const data = buildSmoothPath(points, { closed: false, tension });
+          const data = buildSmoothPath(pts, { closed: false, tension });
           if (part === 'base') {
             base.setAttribute('d', data);
             base.style.display = 'block';
@@ -736,13 +969,23 @@
     }
 
     function createMouthHandler(options = {}) {
-      const group = createGroupElement(options.id);
+      const template = cloneTemplateNode(options.templateId || '');
+      const group = template && template.tagName?.toLowerCase() === 'g'
+        ? template
+        : document.createElementNS(NS, 'g');
+      const templatePath = template ? template.querySelector('path') : null;
+      group.innerHTML = '';
+      appendToFaceOverlay(group);
+      if (options.id) group.id = options.id;
+
       const outer = document.createElementNS(NS, 'path');
-      outer.setAttribute('fill', options.outerFill || '#DF7977');
-      outer.setAttribute('stroke', options.outerStroke || '#B45656');
-      outer.setAttribute('stroke-width', options.outerStrokeWidth ?? 4);
-      outer.setAttribute('stroke-linecap', 'round');
-      outer.setAttribute('stroke-linejoin', 'round');
+      applyTemplateStyles(templatePath, outer, ['fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin'], {
+        fill: options.outerFill || '#DF7977',
+        stroke: options.outerStroke || '#B45656',
+        'stroke-width': options.outerStrokeWidth ?? 4,
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round'
+      });
       group.appendChild(outer);
 
       const inner = document.createElementNS(NS, 'path');
@@ -752,20 +995,35 @@
       inner.style.display = 'none';
       group.appendChild(inner);
 
+      const baseStroke = parseFloat(outer.getAttribute('stroke-width')) || (options.outerStrokeWidth ?? 4);
+      const state = {
+        base: Array.isArray(options.fallback)
+          ? options.fallback.map((pt) => ({ x: pt.x, y: pt.y }))
+          : null
+      };
+
       return {
         el: group,
+        setBase(points) {
+          if (Array.isArray(points)) {
+            state.base = points.map((pt) => ({ x: pt.x, y: pt.y }));
+          }
+        },
         update({ points, part }) {
-          const pts = normalizeLoopPoints(points);
+          const ptsRaw = Array.isArray(points) && points.length ? points : state.base;
+          const pts = normalizeLoopPoints(ptsRaw || []);
           if (!Array.isArray(pts) || pts.length < 3) return;
+          // Use the template colours on a path rebuilt from the pose data to keep expressions aligned with the guides.
           const tension = part === 'outer' ? options.outerTension ?? 0.6 : options.innerTension ?? 0.58;
           const data = buildSmoothPath(pts, { closed: true, tension });
           if (part === 'outer') {
             outer.setAttribute('d', data);
-            const upperMid = centroid(pts.slice(0, Math.floor(pts.length / 2)));
-            const lowerMid = centroid(pts.slice(Math.floor(pts.length / 2)));
+            const half = Math.floor(pts.length / 2);
+            const upperMid = centroid(pts.slice(0, half));
+            const lowerMid = centroid(pts.slice(half));
             const openness = dist(upperMid, lowerMid);
-            const width = Math.max(dist(pts[0], pts[Math.floor(pts.length / 2)]), 1);
-            const strokeWidth = clamp((openness / Math.max(width, 1)) * (options.outerStrokeWidth ?? 4) + 2, 3, 6);
+            const width = Math.max(dist(pts[0], pts[half]), 1);
+            const strokeWidth = clamp((openness / Math.max(width, 1)) * baseStroke + 2, 3, 6);
             outer.setAttribute('stroke-width', formatFloat(strokeWidth));
           } else {
             inner.setAttribute('d', data);
@@ -786,14 +1044,25 @@
     function buildFaceFeature(options = {}) {
       if (!options || !options.type) return null;
       const key = options.sharedKey || options.id || null;
+      const fallback = Array.isArray(options.fallback) ? options.fallback : null;
       if (key && faceFeatureRegistry.has(key)) {
-        return faceFeatureRegistry.get(key);
+        const cached = faceFeatureRegistry.get(key);
+        if (cached && typeof cached.setBase === 'function' && fallback) {
+          cached.setBase(fallback);
+        }
+        if (cached && options.id && cached.el && !cached.el.id) {
+          cached.el.id = options.id;
+        }
+        return cached;
       }
       const factory = FACE_FEATURE_FACTORIES[options.type];
       if (!factory) return null;
       const handler = factory(options) || null;
       if (handler && handler.el && options.id && !handler.el.id) {
         handler.el.id = options.id;
+      }
+      if (handler && typeof handler.setBase === 'function' && fallback) {
+        handler.setBase(fallback);
       }
       if (key && handler) {
         faceFeatureRegistry.set(key, handler);
@@ -814,6 +1083,87 @@
       return { x, y };
     }
 
+    function readTemplatePoint(id) {
+      if (!faceTemplatesRoot || !id) return null;
+      const el = faceTemplatesRoot.querySelector(`[id='${id}']`);
+      if (!el) return null;
+      const cx = el.getAttribute('cx') ?? el.getAttribute('x') ?? el.getAttribute('x1');
+      const cy = el.getAttribute('cy') ?? el.getAttribute('y') ?? el.getAttribute('y1');
+      if (cx == null || cy == null) return null;
+      const x = parseFloat(cx);
+      const y = parseFloat(cy);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+      return { x, y };
+    }
+
+    function parseStyleAttribute(value) {
+      if (typeof value !== 'string') return {};
+      const styles = {};
+      const entries = value.split(';');
+      for (const entry of entries) {
+        if (!entry) continue;
+        const [rawKey, rawVal] = entry.split(':');
+        if (!rawKey || rawVal == null) continue;
+        const key = rawKey.trim();
+        const val = rawVal.trim();
+        if (!key) continue;
+        styles[key] = val;
+      }
+      return styles;
+    }
+
+    function sanitizeTemplateClone(node) {
+      if (!node) return node;
+      const styleAttr = node.getAttribute('style');
+      if (styleAttr) {
+        const styles = parseStyleAttribute(styleAttr);
+        if (styles.display) delete styles.display;
+        const serialized = Object.entries(styles)
+          .map(([key, val]) => `${key}:${val}`)
+          .join(';');
+        if (serialized) node.setAttribute('style', serialized);
+        else node.removeAttribute('style');
+      }
+      if (node.getAttribute('display') === 'none') {
+        node.removeAttribute('display');
+      }
+      return node;
+    }
+
+    function cloneTemplateNode(id) {
+      if (!svgEl || !id) return null;
+      const template = svgEl.getElementById(id);
+      if (!template) return null;
+      const clone = template.cloneNode(true);
+      sanitizeTemplateClone(clone);
+      if (typeof clone.querySelectorAll === 'function') {
+        const descendants = clone.querySelectorAll('*');
+        for (const child of descendants) {
+          sanitizeTemplateClone(child);
+        }
+      }
+      return clone;
+    }
+
+    function applyTemplateStyles(source, target, attrs = [], fallback = {}) {
+      if (!target) return;
+      const styleMap = source ? parseStyleAttribute(source.getAttribute?.('style')) : {};
+      for (const attr of attrs) {
+        const value = source?.getAttribute ? source.getAttribute(attr) : null;
+        const styleValue = styleMap?.[attr];
+        const finalValue = value ?? styleValue;
+        if (finalValue != null) {
+          target.setAttribute(attr, finalValue);
+        }
+      }
+      for (const [attr, value] of Object.entries(fallback)) {
+        if (value == null) continue;
+        if (!target.hasAttribute(attr)) {
+          target.setAttribute(attr, value);
+        }
+      }
+    }
+
     function setPolylinePoints(polyline, pointIds) {
       if (!polyline || !Array.isArray(pointIds)) return null;
       const pts = [];
@@ -827,16 +1177,17 @@
     }
 
     function rotatePuppetSegment(el, origin, target, side, key) {
-      if (!el || !origin || !target) return;
-      const base = PUPPET_ARM_BASES?.[side]?.[key];
-      if (!base) return;
+      if (!el || !origin || !target) return null;
+      const base = puppetArms?.[side]?.base?.[key] || PUPPET_ARM_BASES?.[side]?.[key];
+      if (!base) return null;
       const matrix = computeSimilarityTransform(base, [origin, target]) || lastArmMatrices[side][key];
-      if (!matrix) return;
+      if (!matrix) return null;
       lastArmMatrices[side][key] = matrix;
       const { a, b, c, d, e, f } = matrix;
       el.setAttribute('transform', `matrix(${a} ${b} ${c} ${d} ${e} ${f})`);
       el.style.transform = '';
       el.style.transformOrigin = '';
+      return matrix;
     }
 
     function alignLimbToPuppet(rawArm, lengths) {
@@ -960,6 +1311,7 @@
       let contourTarget = null;
       let contourFallback = null;
       let contourAnchorIndex = -1;
+      const pendingUpdates = [];
       for (const segment of segments.face) {
         const { debug, handler, handlerEl, featurePart, ids, fallback, isContour, anchorIndex } = segment;
         const points = [];
@@ -997,13 +1349,9 @@
           contourAnchorIndex = typeof anchorIndex === 'number' ? anchorIndex : -1;
         }
 
-        if (!handler || !target) continue;
-        handler.update({
-          points: target,
-          part: featurePart,
-          fallback,
-          ids,
-          element: handlerEl || handler.el || null
+        pendingUpdates.push({
+          segment,
+          target
         });
       }
       if (headMatrix && contourFallback && contourTarget && headAnchorBase) {
@@ -1043,6 +1391,26 @@
             };
           }
         }
+      }
+
+      if (headMatrix && contourFallback && contourTarget) {
+        validateSegment('face-contour', contourFallback, contourTarget, headMatrix);
+      }
+
+      for (const update of pendingUpdates) {
+        const { segment, target } = update;
+        const { handler, handlerEl, featurePart, fallback, ids } = segment;
+        if (!handler || !target) continue;
+        handler.update({
+          points: target,
+          part: featurePart,
+          fallback,
+          ids,
+          element: handlerEl || handler.el || null,
+          matrix: headMatrix,
+          contourFallback,
+          contourTarget
+        });
       }
 
       applyHeadTransform(headMatrix);
@@ -1091,10 +1459,7 @@
         }
         placeLine(segments.left.upper, A, B);
         placeLine(segments.left.lower, B, C);
-        if (puppetArms.left.ready) {
-          rotatePuppetSegment(puppetArms.left.upper, A, B, 'left', 'upper');
-          rotatePuppetSegment(puppetArms.left.lower, B, C, 'left', 'lower');
-        }
+        applyArmRig('left', leftArmRig);
       }
 
       if (rightArmRig) {
@@ -1104,10 +1469,7 @@
         }
         placeLine(segments.right.upper, A, B);
         placeLine(segments.right.lower, B, C);
-        if (puppetArms.right.ready) {
-          rotatePuppetSegment(puppetArms.right.upper, A, B, 'right', 'upper');
-          rotatePuppetSegment(puppetArms.right.lower, B, C, 'right', 'lower');
-        }
+        applyArmRig('right', rightArmRig);
       }
 
       let neckBase = null;
@@ -1130,6 +1492,12 @@
             { base: PUPPET_RIGHT_SH, target: shoulders.right },
             { base: PUPPET_SHOULDERS_MID, target: centerTop }
           ]);
+          validateSegment('torso', PUPPET_BODY_BASE, [
+            shoulders.right,
+            shoulders.left,
+            hips.right,
+            hips.left
+          ], bodyMatrix);
         }
         applyBodyTransform(bodyMatrix);
         if (bodyMatrix) {
@@ -1171,6 +1539,11 @@
         svgEl.setAttribute('preserveAspectRatio', 'xMidYMid meet');
         svgEl.style.width = '100%';
         svgEl.style.height = 'auto';
+        faceTemplatesRoot = svgEl.getElementById('face_templates');
+        updatePuppetMeasurementsFromSkeleton();
+        if (faceTemplatesRoot) {
+          computeFaceAnchorAdjustments();
+        }
         headTargets = [];
         bodyTargets = [];
         const headBase = svgEl.getElementById('puppet_head_base');
@@ -1250,35 +1623,77 @@
           {
             id: 'face_brow_right',
             ids: ['rightBrow0', 'rightBrow1', 'rightBrow2', 'rightBrow3', 'rightBrow4'],
-            feature: { type: 'brow', id: 'brow_right_feature', sharedKey: 'brow_right', strokeWidth: 12, tension: 0.58 }
+            feature: {
+              type: 'brow',
+              id: 'brow_right_feature',
+              sharedKey: 'brow_right',
+              strokeWidth: 12,
+              tension: 0.58,
+              templateId: 'template_brow_right'
+            }
           },
           {
             id: 'face_brow_left',
             ids: ['leftBrow0', 'leftBrow1', 'leftBrow2', 'leftBrow3', 'leftBrow4'],
-            feature: { type: 'brow', id: 'brow_left_feature', sharedKey: 'brow_left', strokeWidth: 12, tension: 0.58 }
+            feature: {
+              type: 'brow',
+              id: 'brow_left_feature',
+              sharedKey: 'brow_left',
+              strokeWidth: 12,
+              tension: 0.58,
+              templateId: 'template_brow_left'
+            }
           },
           {
             id: 'face_eye_right',
             ids: ['rightEye0', 'rightEye1', 'rightEye2', 'rightEye3', 'rightEye4', 'rightEye5', 'rightEye0'],
             width: 5,
-            feature: { type: 'eye', id: 'eye_right_feature', sharedKey: 'eye_right', side: 'right', strokeWidth: 4 }
+            feature: {
+              type: 'eye',
+              id: 'eye_right_feature',
+              sharedKey: 'eye_right',
+              side: 'right',
+              strokeWidth: 4,
+              templateId: 'template_eye_right'
+            }
           },
           {
             id: 'face_eye_left',
             ids: ['leftEye0', 'leftEye1', 'leftEye2', 'leftEye3', 'leftEye4', 'leftEye5', 'leftEye0'],
             width: 5,
-            feature: { type: 'eye', id: 'eye_left_feature', sharedKey: 'eye_left', side: 'left', strokeWidth: 4 }
+            feature: {
+              type: 'eye',
+              id: 'eye_left_feature',
+              sharedKey: 'eye_left',
+              side: 'left',
+              strokeWidth: 4,
+              templateId: 'template_eye_left'
+            }
           },
           {
             id: 'face_nose_bridge',
             ids: ['nose0', 'nose1', 'nose2', 'nose3', 'nose4'],
-            feature: { type: 'nose', id: 'nose_feature', sharedKey: 'nose', part: 'bridge', stroke: '#2C323A' }
+            feature: {
+              type: 'nose',
+              id: 'nose_feature',
+              sharedKey: 'nose',
+              part: 'bridge',
+              stroke: '#2C323A',
+              templateId: 'template_nose'
+            }
           },
           {
             id: 'face_nose_base',
             ids: ['rightNose0', 'rightNose1', 'nose4', 'leftNose1', 'leftNose0'],
             width: 5,
-            feature: { type: 'nose', id: 'nose_feature', sharedKey: 'nose', part: 'base', stroke: '#2C323A' }
+            feature: {
+              type: 'nose',
+              id: 'nose_feature',
+              sharedKey: 'nose',
+              part: 'base',
+              stroke: '#2C323A',
+              templateId: 'template_nose'
+            }
           },
           {
             id: 'face_mouth_outer',
@@ -1289,7 +1704,13 @@
               'rightMouthCorner'
             ],
             width: 7,
-            feature: { type: 'mouth', id: 'mouth_feature', sharedKey: 'mouth', part: 'outer' }
+            feature: {
+              type: 'mouth',
+              id: 'mouth_feature',
+              sharedKey: 'mouth',
+              part: 'outer',
+              templateId: 'template_mouth'
+            }
           },
           {
             id: 'face_mouth_inner',
@@ -1298,7 +1719,12 @@
               'leftMouthCorner', 'leftLowerLipTop0', 'lowerLipTopMid', 'rightLowerLipTop0', 'rightMouthCorner'
             ],
             width: 4,
-            feature: { type: 'mouth', sharedKey: 'mouth', part: 'inner' }
+            feature: {
+              type: 'mouth',
+              sharedKey: 'mouth',
+              part: 'inner',
+              templateId: 'template_mouth'
+            }
           }
         ];
 
@@ -1317,7 +1743,7 @@
           let handlerEl = null;
           let featurePart = null;
           if (guide.feature) {
-            handler = buildFaceFeature(guide.feature);
+            handler = buildFaceFeature({ ...guide.feature, fallback });
             handlerEl = handler?.el || null;
             featurePart = guide.feature.part ?? null;
             if (handler && typeof handler.update === 'function') {
@@ -1326,7 +1752,8 @@
                 part: featurePart,
                 fallback,
                 ids: guide.ids,
-                element: handlerEl
+                element: handlerEl,
+                matrix: null
               });
             }
           }
@@ -1409,9 +1836,10 @@
           const lower = findArmPart(candidates.lower);
           puppetArms[side].upper = upper;
           puppetArms[side].lower = lower;
-          puppetArms[side].ready = Boolean(upper && lower);
+          const ready = ensurePuppetArm(side);
+          puppetArms[side].ready = ready;
 
-          if (!puppetArms[side].ready && !puppetArms[side].warningShown) {
+          if (!ready && !puppetArms[side].warningShown) {
             const sideLabel = side === 'left' ? 'esquerdo' : 'direito';
             console.warn(`Braço ${sideLabel} do puppet não encontrado em boy.svg; mantendo modo debug.`);
             puppetArms[side].warningShown = true;
