@@ -435,12 +435,38 @@
     const FACE_OVERLAY_ID = 'faceSynth';
     const LEGACY_FACE_OVERLAY_ID = 'face_overlay_layer';
     const FACE_OVERLAY_SUBGROUP_IDS = {
+      hair: 'fs-hair',
       skin: 'fs-skin',
       mouth: 'fs-mouth',
       nose: 'fs-nose',
       eyes: 'fs-eyes',
       brows: 'fs-brows'
     };
+    const FACE_CONTOUR_POINT_IDS = [
+      'topMid',
+      'rightTop0',
+      'rightTop1',
+      'rightJaw0',
+      'rightJaw1',
+      'rightJaw2',
+      'rightJaw3',
+      'rightJaw4',
+      'rightJaw5',
+      'rightJaw6',
+      'rightJaw7',
+      'jawMid',
+      'leftJaw7',
+      'leftJaw6',
+      'leftJaw5',
+      'leftJaw4',
+      'leftJaw3',
+      'leftJaw2',
+      'leftJaw1',
+      'leftJaw0',
+      'leftTop1',
+      'leftTop0',
+      'topMid'
+    ];
     let faceTemplatesRoot = null;
     let faceOverlayLayer = null;
     const faceOverlayGroups = new Map();
@@ -2056,6 +2082,7 @@
     }
 
     function ensureFaceOverlayGroups() {
+      ensureFaceOverlayGroup(FACE_OVERLAY_SUBGROUP_IDS.hair);
       ensureFaceOverlayGroup(FACE_OVERLAY_SUBGROUP_IDS.skin);
       ensureFaceOverlayGroup(FACE_OVERLAY_SUBGROUP_IDS.mouth);
       ensureFaceOverlayGroup(FACE_OVERLAY_SUBGROUP_IDS.nose);
@@ -2104,6 +2131,365 @@
       }
       positionFaceOverlayLayer();
       return element;
+    }
+
+    function createHairHandler(options = {}) {
+      const group = document.createElementNS(NS, 'g');
+      if (options.id) group.id = options.id;
+      group.style.display = 'none';
+      appendToFaceOverlay(group, FACE_OVERLAY_SUBGROUP_IDS.hair);
+
+      const hairColor = options.color || '#2F2A3A';
+      const highlightColor = options.highlight || '#514869';
+
+      const bun = document.createElementNS(NS, 'ellipse');
+      bun.setAttribute('fill', hairColor);
+      group.appendChild(bun);
+
+      const highlight = document.createElementNS(NS, 'path');
+      highlight.setAttribute('fill', 'none');
+      highlight.setAttribute('stroke', highlightColor);
+      highlight.setAttribute('stroke-linecap', 'round');
+      highlight.setAttribute('stroke-linejoin', 'round');
+      highlight.setAttribute('stroke-opacity', '0.7');
+      group.appendChild(highlight);
+
+      const strandLeft = document.createElementNS(NS, 'path');
+      strandLeft.setAttribute('fill', 'none');
+      strandLeft.setAttribute('stroke', hairColor);
+      strandLeft.setAttribute('stroke-linecap', 'round');
+      strandLeft.setAttribute('stroke-linejoin', 'round');
+      group.appendChild(strandLeft);
+
+      const strandRight = document.createElementNS(NS, 'path');
+      strandRight.setAttribute('fill', 'none');
+      strandRight.setAttribute('stroke', hairColor);
+      strandRight.setAttribute('stroke-linecap', 'round');
+      strandRight.setAttribute('stroke-linejoin', 'round');
+      group.appendChild(strandRight);
+
+      const state = {
+        base: {
+          top: null,
+          jaw: null,
+          leftWidth: null,
+          rightWidth: null,
+          leftCheek: null,
+          rightCheek: null,
+          leftBrow: null,
+          rightBrow: null
+        },
+        baseWidth: null,
+        baseHeight: null,
+        baseBunRadius: null,
+        points: {},
+        scalars: {},
+        strands: {
+          left: {},
+          right: {}
+        }
+      };
+
+      const clonePoint = (pt) => (pt ? { x: pt.x, y: pt.y } : null);
+
+      const buildMap = (points, idsSource) => {
+        if (!Array.isArray(points) || !Array.isArray(idsSource)) return null;
+        const map = {};
+        const count = Math.min(points.length, idsSource.length);
+        for (let i = 0; i < count; i += 1) {
+          const id = idsSource[i];
+          const pt = points[i];
+          if (!id || !pt) continue;
+          map[id] = pt;
+        }
+        return map;
+      };
+
+      const smoothPoint = (key, target, alpha = 0.35) => {
+        if (!target) return null;
+        const prev = state.points[key] || null;
+        const next = prev
+          ? {
+            x: prev.x + alpha * (target.x - prev.x),
+            y: prev.y + alpha * (target.y - prev.y)
+          }
+          : { x: target.x, y: target.y };
+        state.points[key] = next;
+        return next;
+      };
+
+      const smoothScalarKey = (key, target, alpha = 0.3) => {
+        if (!Number.isFinite(target)) return state.scalars[key] ?? target ?? null;
+        const prev = state.scalars[key];
+        const next = smoothScalar(prev, target, alpha);
+        state.scalars[key] = next;
+        return next;
+      };
+
+      const ensureBase = (contourMap, fallbackMap) => {
+        if (!contourMap || state.base.top) return;
+        state.base.top = clonePoint(contourMap.topMid || null);
+        state.base.jaw = clonePoint(contourMap.jawMid || null);
+        state.base.leftWidth = clonePoint(contourMap.leftJaw6 || contourMap.leftJaw5 || null);
+        state.base.rightWidth = clonePoint(contourMap.rightJaw6 || contourMap.rightJaw5 || null);
+        state.base.leftCheek = clonePoint(contourMap.leftJaw4 || contourMap.leftJaw3 || null);
+        state.base.rightCheek = clonePoint(contourMap.rightJaw4 || contourMap.rightJaw3 || null);
+        if (fallbackMap) {
+          state.base.leftBrow = clonePoint(fallbackMap.leftBrow2 || fallbackMap.leftBrow3 || null);
+          state.base.rightBrow = clonePoint(fallbackMap.rightBrow2 || fallbackMap.rightBrow3 || null);
+          if (!state.base.leftWidth && fallbackMap.leftJaw6) {
+            state.base.leftWidth = clonePoint(fallbackMap.leftJaw6);
+          }
+          if (!state.base.rightWidth && fallbackMap.rightJaw6) {
+            state.base.rightWidth = clonePoint(fallbackMap.rightJaw6);
+          }
+          if (!state.base.leftCheek && fallbackMap.leftJaw4) {
+            state.base.leftCheek = clonePoint(fallbackMap.leftJaw4);
+          }
+          if (!state.base.rightCheek && fallbackMap.rightJaw4) {
+            state.base.rightCheek = clonePoint(fallbackMap.rightJaw4);
+          }
+        }
+        if (state.base.top && state.base.jaw) {
+          const height = dist(state.base.top, state.base.jaw);
+          if (Number.isFinite(height) && height > 0) state.baseHeight = height;
+        }
+        if (state.base.leftWidth && state.base.rightWidth) {
+          const width = dist(state.base.leftWidth, state.base.rightWidth);
+          if (Number.isFinite(width) && width > 0) state.baseWidth = width;
+        }
+        if (!state.baseBunRadius && state.baseWidth) {
+          state.baseBunRadius = state.baseWidth * 0.42;
+        }
+      };
+
+      const getTransformed = (matrix, point) => {
+        if (!point) return null;
+        return matrix ? transformPoint(matrix, point) : { x: point.x, y: point.y };
+      };
+
+      return {
+        el: group,
+        setBase() {},
+        update({
+          points,
+          fallback,
+          ids = [],
+          matrix,
+          contourFallback,
+          contourTarget,
+          visible = true
+        }) {
+          if (!visible || !matrix) {
+            group.style.display = 'none';
+            return;
+          }
+
+          const contourFallbackMap = buildMap(contourFallback, FACE_CONTOUR_POINT_IDS);
+          if (!contourFallbackMap) {
+            group.style.display = 'none';
+            return;
+          }
+
+          const fallbackMap = buildMap(fallback, ids) || {};
+          ensureBase(contourFallbackMap, fallbackMap);
+
+          const contourTargetMap = buildMap(contourTarget, FACE_CONTOUR_POINT_IDS) || {};
+          const targetMap = buildMap(points, ids) || {};
+
+          const resolvePoint = (id) => {
+            if (!id) return null;
+            if (Object.prototype.hasOwnProperty.call(targetMap, id)) return targetMap[id];
+            if (Object.prototype.hasOwnProperty.call(contourTargetMap, id)) return contourTargetMap[id];
+            if (Object.prototype.hasOwnProperty.call(fallbackMap, id)) {
+              return getTransformed(matrix, fallbackMap[id]);
+            }
+            if (Object.prototype.hasOwnProperty.call(contourFallbackMap, id)) {
+              return getTransformed(matrix, contourFallbackMap[id]);
+            }
+            switch (id) {
+              case 'leftJaw6':
+              case 'leftJaw5':
+                if (state.base.leftWidth) return getTransformed(matrix, state.base.leftWidth);
+                break;
+              case 'rightJaw6':
+              case 'rightJaw5':
+                if (state.base.rightWidth) return getTransformed(matrix, state.base.rightWidth);
+                break;
+              case 'leftJaw4':
+              case 'leftJaw3':
+                if (state.base.leftCheek) return getTransformed(matrix, state.base.leftCheek);
+                break;
+              case 'rightJaw4':
+              case 'rightJaw3':
+                if (state.base.rightCheek) return getTransformed(matrix, state.base.rightCheek);
+                break;
+              case 'leftBrow2':
+              case 'leftBrow3':
+                if (state.base.leftBrow) return getTransformed(matrix, state.base.leftBrow);
+                break;
+              case 'rightBrow2':
+              case 'rightBrow3':
+                if (state.base.rightBrow) return getTransformed(matrix, state.base.rightBrow);
+                break;
+              case 'jawMid':
+                if (state.base.jaw) return getTransformed(matrix, state.base.jaw);
+                break;
+              case 'topMid':
+                if (state.base.top) return getTransformed(matrix, state.base.top);
+                break;
+              default:
+                break;
+            }
+            return null;
+          };
+
+          const top = state.base.top ? getTransformed(matrix, state.base.top) : resolvePoint('topMid');
+          const jaw = state.base.jaw ? getTransformed(matrix, state.base.jaw) : resolvePoint('jawMid');
+          const leftWidth = resolvePoint('leftJaw6') || (state.base.leftWidth ? getTransformed(matrix, state.base.leftWidth) : null);
+          const rightWidth = resolvePoint('rightJaw6') || (state.base.rightWidth ? getTransformed(matrix, state.base.rightWidth) : null);
+          const leftCheek = resolvePoint('leftJaw4') || (state.base.leftCheek ? getTransformed(matrix, state.base.leftCheek) : null);
+          const rightCheek = resolvePoint('rightJaw4') || (state.base.rightCheek ? getTransformed(matrix, state.base.rightCheek) : null);
+          const leftBrow = resolvePoint('leftBrow2') || (state.base.leftBrow ? getTransformed(matrix, state.base.leftBrow) : null);
+          const rightBrow = resolvePoint('rightBrow2') || (state.base.rightBrow ? getTransformed(matrix, state.base.rightBrow) : null);
+
+          if (!top || !jaw || !leftWidth || !rightWidth || !leftCheek || !rightCheek) {
+            group.style.display = 'none';
+            return;
+          }
+
+          const headHeight = Math.max(dist(top, jaw), 1);
+          const faceWidth = Math.max(dist(leftWidth, rightWidth), 1);
+
+          if (!state.baseWidth) state.baseWidth = faceWidth;
+          if (!state.baseHeight) state.baseHeight = headHeight;
+          if (!state.baseBunRadius) state.baseBunRadius = faceWidth * 0.42;
+
+          const widthRatio = state.baseWidth ? faceWidth / state.baseWidth : 1;
+          const heightRatio = state.baseHeight ? headHeight / state.baseHeight : 1;
+          const scaleTarget = clamp((widthRatio + heightRatio) / 2, 0.88, 1.18);
+          const scale = smoothScalarKey('scale', scaleTarget, 0.25) ?? scaleTarget;
+
+          const upVec = { x: top.x - jaw.x, y: top.y - jaw.y };
+          const upLen = Math.hypot(upVec.x, upVec.y) || 1;
+          const upUnit = { x: upVec.x / upLen, y: upVec.y / upLen };
+          const downUnit = { x: -upUnit.x, y: -upUnit.y };
+
+          const sideVec = { x: leftWidth.x - rightWidth.x, y: leftWidth.y - rightWidth.y };
+          const sideLen = Math.hypot(sideVec.x, sideVec.y) || 1;
+          const sideUnit = { x: sideVec.x / sideLen, y: sideVec.y / sideLen };
+          const rightOut = { x: -sideUnit.x, y: -sideUnit.y };
+          const leftOut = { x: sideUnit.x, y: sideUnit.y };
+
+          const bunOffsetUp = headHeight * 0.32;
+          const bunCenterTarget = {
+            x: top.x + upUnit.x * bunOffsetUp + downUnit.x * headHeight * 0.04,
+            y: top.y + upUnit.y * bunOffsetUp + downUnit.y * headHeight * 0.04
+          };
+          const bunCenter = smoothPoint('bunCenter', bunCenterTarget, 0.32);
+
+          const bunRadiusTarget = clamp((state.baseBunRadius || faceWidth * 0.4) * scale, faceWidth * 0.28, faceWidth * 0.6);
+          const bunRadius = smoothScalarKey('bunRadius', bunRadiusTarget, 0.28) ?? bunRadiusTarget;
+
+          if (!bunCenter || !Number.isFinite(bunRadius) || bunRadius < 1) {
+            group.style.display = 'none';
+            return;
+          }
+
+          const bunRy = bunRadius * 0.82;
+          bun.setAttribute('cx', formatFloat(bunCenter.x));
+          bun.setAttribute('cy', formatFloat(bunCenter.y));
+          bun.setAttribute('rx', formatFloat(bunRadius));
+          bun.setAttribute('ry', formatFloat(bunRy));
+          bun.style.display = '';
+
+          const highlightSpan = bunRadius * 1.25;
+          const highlightLift = bunRadius * 0.35;
+          const highlightStartTarget = {
+            x: bunCenter.x + sideUnit.x * (-highlightSpan * 0.5) + upUnit.x * (-highlightLift),
+            y: bunCenter.y + sideUnit.y * (-highlightSpan * 0.5) + upUnit.y * (-highlightLift)
+          };
+          const highlightEndTarget = {
+            x: bunCenter.x + sideUnit.x * (highlightSpan * 0.5) + upUnit.x * (-highlightLift),
+            y: bunCenter.y + sideUnit.y * (highlightSpan * 0.5) + upUnit.y * (-highlightLift)
+          };
+          const highlightCtrlTarget = {
+            x: bunCenter.x + upUnit.x * (-bunRadius * 0.95),
+            y: bunCenter.y + upUnit.y * (-bunRadius * 0.95)
+          };
+
+          const highlightStart = smoothPoint('highlightStart', highlightStartTarget, 0.4);
+          const highlightEnd = smoothPoint('highlightEnd', highlightEndTarget, 0.4);
+          const highlightCtrl = smoothPoint('highlightCtrl', highlightCtrlTarget, 0.4);
+          const highlightWidth = clamp(bunRadius * 0.22, 2.5, bunRadius * 0.45);
+
+          if (highlightStart && highlightEnd && highlightCtrl) {
+            highlight.setAttribute('stroke-width', formatFloat(highlightWidth));
+            highlight.setAttribute('d', [
+              `M ${formatFloat(highlightStart.x)} ${formatFloat(highlightStart.y)}`,
+              `Q ${formatFloat(highlightCtrl.x)} ${formatFloat(highlightCtrl.y)} ${formatFloat(highlightEnd.x)} ${formatFloat(highlightEnd.y)}`
+            ].join(' '));
+            highlight.style.display = '';
+          } else {
+            highlight.style.display = 'none';
+          }
+
+          const updateStrand = (side) => {
+            const isLeft = side === 'left';
+            const outward = isLeft ? leftOut : rightOut;
+            const brow = isLeft ? leftBrow : rightBrow;
+            const cheek = isLeft ? leftCheek : rightCheek;
+            if (!cheek) return;
+            const startRef = brow || (isLeft ? leftWidth : rightWidth);
+            const startTarget = startRef
+              ? {
+                x: startRef.x + outward.x * faceWidth * 0.16 + downUnit.x * headHeight * 0.12,
+                y: startRef.y + outward.y * faceWidth * 0.16 + downUnit.y * headHeight * 0.12
+              }
+              : {
+                x: (isLeft ? leftWidth.x : rightWidth.x) + outward.x * faceWidth * 0.16,
+                y: (isLeft ? leftWidth.y : rightWidth.y) + outward.y * faceWidth * 0.16
+              };
+            const endTarget = {
+              x: cheek.x + outward.x * faceWidth * 0.08 + upUnit.x * (-headHeight * 0.08),
+              y: cheek.y + outward.y * faceWidth * 0.08 + upUnit.y * (-headHeight * 0.08)
+            };
+            const midPoint = {
+              x: (startTarget.x + endTarget.x) / 2,
+              y: (startTarget.y + endTarget.y) / 2
+            };
+            const ctrlTarget = {
+              x: midPoint.x + outward.x * faceWidth * 0.06 + downUnit.x * headHeight * 0.18,
+              y: midPoint.y + outward.y * faceWidth * 0.06 + downUnit.y * headHeight * 0.18
+            };
+
+            const key = isLeft ? 'left' : 'right';
+            const strand = state.strands[key];
+            strand.start = smoothPoint(`strand_${key}_start`, startTarget, 0.4);
+            strand.end = smoothPoint(`strand_${key}_end`, endTarget, 0.4);
+            strand.ctrl = smoothPoint(`strand_${key}_ctrl`, ctrlTarget, 0.4);
+            const widthTarget = clamp((state.baseWidth || faceWidth) * 0.08 * scale, 3, faceWidth * 0.16);
+            strand.width = smoothScalarKey(`strand_${key}_width`, widthTarget, 0.3) ?? widthTarget;
+
+            const element = isLeft ? strandLeft : strandRight;
+            if (strand.start && strand.end && strand.ctrl) {
+              element.setAttribute('stroke-width', formatFloat(strand.width));
+              element.setAttribute('d', [
+                `M ${formatFloat(strand.start.x)} ${formatFloat(strand.start.y)}`,
+                `Q ${formatFloat(strand.ctrl.x)} ${formatFloat(strand.ctrl.y)} ${formatFloat(strand.end.x)} ${formatFloat(strand.end.y)}`
+              ].join(' '));
+              element.style.display = '';
+            } else {
+              element.style.display = 'none';
+            }
+          };
+
+          updateStrand('left');
+          updateStrand('right');
+
+          group.style.display = '';
+        }
+      };
     }
 
     function createBrowHandler(options = {}) {
@@ -3211,6 +3597,7 @@
     }
 
     const FACE_FEATURE_FACTORIES = {
+      hair: createHairHandler,
       brow: createBrowHandler,
       eye: createEyeHandler,
       skin: createSkinHandler,
@@ -3852,6 +4239,16 @@
               'leftJaw1', 'leftJaw0', 'leftTop1', 'leftTop0', 'topMid'
             ],
             width: 8
+          },
+          {
+            id: 'face_hair_overlay',
+            ids: ['rightJaw6', 'rightJaw4', 'jawMid', 'leftJaw4', 'leftJaw6', 'rightBrow2', 'leftBrow2'],
+            width: 6,
+            feature: {
+              type: 'hair',
+              id: 'hair_feature',
+              sharedKey: 'hair'
+            }
           },
           {
             id: 'face_skin_jaw',
