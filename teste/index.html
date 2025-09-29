@@ -160,6 +160,7 @@
     <button type="button" class="debug-toggle" data-toggle-target="rightArm" aria-pressed="true">Braço direito</button>
     <button type="button" class="debug-toggle" data-toggle-target="body" aria-pressed="true">Corpo</button>
     <button type="button" class="debug-toggle" data-toggle-target="face" aria-pressed="true">Rosto</button>
+    <button type="button" class="debug-toggle" data-toggle-target="fingers" aria-pressed="true">Dedos</button>
   </section>
   <section id="playbackControls" aria-label="Controle de velocidade da animação">
     <label for="speedControl">Velocidade:</label>
@@ -373,7 +374,8 @@
       leftArm: DEBUG_ARM,
       rightArm: DEBUG_ARM,
       body: true,
-      face: true
+      face: true,
+      fingers: true
     };
     let faceTemplatesRoot = null;
     let faceOverlayLayer = null;
@@ -397,6 +399,113 @@
     let headAnchorOffset = null;
     const VALIDATION_TOLERANCE = 12;
     const validationNotified = new Set();
+
+    const HAND_PALM_CHAIN = [0, 5, 9, 13, 17, 0];
+    const HAND_FINGER_CHAINS = {
+      thumb: [0, 1, 2, 3, 4],
+      index: [0, 5, 6, 7, 8],
+      middle: [0, 9, 10, 11, 12],
+      ring: [0, 13, 14, 15, 16],
+      pinky: [0, 17, 18, 19, 20]
+    };
+    const HAND_SIDE_KEYS = {
+      left: [
+        'left',
+        'leftHand',
+        'left_hand',
+        'handLeft',
+        'leftHandLandmarks',
+        'leftLandmarks',
+        'leftPalm'
+      ],
+      right: [
+        'right',
+        'rightHand',
+        'right_hand',
+        'handRight',
+        'rightHandLandmarks',
+        'rightLandmarks',
+        'rightPalm'
+      ]
+    };
+    const HAND_LANDMARK_ALIASES = {
+      0: ['WRIST'],
+      1: ['THUMB_CMC', 'THUMB0', 'THUMB_CARPAL', 'THUMB_BASE'],
+      2: ['THUMB_MCP', 'THUMB1'],
+      3: ['THUMB_IP', 'THUMB2'],
+      4: ['THUMB_TIP', 'THUMB3'],
+      5: ['INDEX_FINGER_MCP', 'INDEX0', 'INDEX_BASE'],
+      6: ['INDEX_FINGER_PIP', 'INDEX1'],
+      7: ['INDEX_FINGER_DIP', 'INDEX2'],
+      8: ['INDEX_FINGER_TIP', 'INDEX3'],
+      9: ['MIDDLE_FINGER_MCP', 'MIDDLE0', 'MIDDLE_BASE'],
+      10: ['MIDDLE_FINGER_PIP', 'MIDDLE1'],
+      11: ['MIDDLE_FINGER_DIP', 'MIDDLE2'],
+      12: ['MIDDLE_FINGER_TIP', 'MIDDLE3'],
+      13: ['RING_FINGER_MCP', 'RING0', 'RING_BASE'],
+      14: ['RING_FINGER_PIP', 'RING1'],
+      15: ['RING_FINGER_DIP', 'RING2'],
+      16: ['RING_FINGER_TIP', 'RING3'],
+      17: ['PINKY_MCP', 'PINKY0', 'PINKY_BASE', 'LITTLE0'],
+      18: ['PINKY_PIP', 'PINKY1', 'LITTLE1'],
+      19: ['PINKY_DIP', 'PINKY2', 'LITTLE2'],
+      20: ['PINKY_TIP', 'PINKY3', 'LITTLE3']
+    };
+    const FINGER_CAPSULE_WIDTHS = {
+      thumb: 26,
+      index: 20,
+      middle: 22,
+      ring: 20,
+      pinky: 18
+    };
+    const HAND_KEYPOINT_NAME_MAP = {
+      left: {
+        0: ['leftWrist'],
+        1: ['leftThumbCMC', 'leftThumb0', 'leftThumb1'],
+        2: ['leftThumbMCP', 'leftThumb2'],
+        3: ['leftThumbIP', 'leftThumb3'],
+        4: ['leftThumbTip', 'leftThumb4'],
+        5: ['leftIndexMCP', 'leftIndex0'],
+        6: ['leftIndexPIP', 'leftIndex1'],
+        7: ['leftIndexDIP', 'leftIndex2'],
+        8: ['leftIndexTip', 'leftIndex3'],
+        9: ['leftMiddleMCP', 'leftMiddle0'],
+        10: ['leftMiddlePIP', 'leftMiddle1'],
+        11: ['leftMiddleDIP', 'leftMiddle2'],
+        12: ['leftMiddleTip', 'leftMiddle3'],
+        13: ['leftRingMCP', 'leftRing0'],
+        14: ['leftRingPIP', 'leftRing1'],
+        15: ['leftRingDIP', 'leftRing2'],
+        16: ['leftRingTip', 'leftRing3'],
+        17: ['leftPinkyMCP', 'leftPinky0', 'leftLittle0'],
+        18: ['leftPinkyPIP', 'leftPinky1', 'leftLittle1'],
+        19: ['leftPinkyDIP', 'leftPinky2', 'leftLittle2'],
+        20: ['leftPinkyTip', 'leftPinky3', 'leftLittle3']
+      },
+      right: {
+        0: ['rightWrist'],
+        1: ['rightThumbCMC', 'rightThumb0', 'rightThumb1'],
+        2: ['rightThumbMCP', 'rightThumb2'],
+        3: ['rightThumbIP', 'rightThumb3'],
+        4: ['rightThumbTip', 'rightThumb4'],
+        5: ['rightIndexMCP', 'rightIndex0'],
+        6: ['rightIndexPIP', 'rightIndex1'],
+        7: ['rightIndexDIP', 'rightIndex2'],
+        8: ['rightIndexTip', 'rightIndex3'],
+        9: ['rightMiddleMCP', 'rightMiddle0'],
+        10: ['rightMiddlePIP', 'rightMiddle1'],
+        11: ['rightMiddleDIP', 'rightMiddle2'],
+        12: ['rightMiddleTip', 'rightMiddle3'],
+        13: ['rightRingMCP', 'rightRing0'],
+        14: ['rightRingPIP', 'rightRing1'],
+        15: ['rightRingDIP', 'rightRing2'],
+        16: ['rightRingTip', 'rightRing3'],
+        17: ['rightPinkyMCP', 'rightPinky0', 'rightLittle0'],
+        18: ['rightPinkyPIP', 'rightPinky1', 'rightLittle1'],
+        19: ['rightPinkyDIP', 'rightPinky2', 'rightLittle2'],
+        20: ['rightPinkyTip', 'rightPinky3', 'rightLittle3']
+      }
+    };
 
     const EMA = (prev, cur, a = 0.35) => {
       if (!prev) return cur;
@@ -596,6 +705,613 @@
       polyline.setAttribute('points', serialized);
     }
 
+    function normalizeHandPoint(value) {
+      if (!value) return null;
+      const toNumber = (input) => {
+        const num = Number.parseFloat(input);
+        return Number.isFinite(num) ? num : null;
+      };
+      if (Array.isArray(value)) {
+        if (value.length < 2) return null;
+        const x = toNumber(value[0]);
+        const y = toNumber(value[1]);
+        return x == null || y == null ? null : { x, y };
+      }
+      if (typeof value === 'object') {
+        if (value.x != null && value.y != null) {
+          const x = toNumber(value.x);
+          const y = toNumber(value.y);
+          if (x != null && y != null) return { x, y };
+        }
+        if (value.X != null && value.Y != null) {
+          const x = toNumber(value.X);
+          const y = toNumber(value.Y);
+          if (x != null && y != null) return { x, y };
+        }
+        if (Array.isArray(value.xy)) {
+          const x = toNumber(value.xy[0]);
+          const y = toNumber(value.xy[1]);
+          if (x != null && y != null) return { x, y };
+        }
+        if (Array.isArray(value.point)) {
+          const x = toNumber(value.point[0]);
+          const y = toNumber(value.point[1]);
+          if (x != null && y != null) return { x, y };
+        }
+        if (Array.isArray(value.coordinates)) {
+          const x = toNumber(value.coordinates[0]);
+          const y = toNumber(value.coordinates[1]);
+          if (x != null && y != null) return { x, y };
+        }
+        if (Array.isArray(value.position)) {
+          const x = toNumber(value.position[0]);
+          const y = toNumber(value.position[1]);
+          if (x != null && y != null) return { x, y };
+        }
+        if (value[0] != null && value[1] != null) {
+          const x = toNumber(value[0]);
+          const y = toNumber(value[1]);
+          if (x != null && y != null) return { x, y };
+        }
+      }
+      return null;
+    }
+
+    function propertyVariants(key) {
+      if (typeof key !== 'string' || !key.length) return [key];
+      const variants = new Set();
+      variants.add(key);
+      variants.add(key.toLowerCase());
+      variants.add(key.toUpperCase());
+      const camel = key.replace(/[_\s-]+(\w)/g, (_, ch) => ch.toUpperCase());
+      if (camel) {
+        variants.add(camel);
+        variants.add(camel.charAt(0).toLowerCase() + camel.slice(1));
+        variants.add(camel.charAt(0).toUpperCase() + camel.slice(1));
+      }
+      const snake = key
+        .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+        .replace(/[-\s]+/g, '_')
+        .toLowerCase();
+      if (snake) {
+        variants.add(snake);
+      }
+      return Array.from(variants);
+    }
+
+    function readHandProperty(source, key) {
+      if (!source || !key) return null;
+      for (const variant of propertyVariants(key)) {
+        if (variant && source[variant] != null) {
+          return source[variant];
+        }
+      }
+      return null;
+    }
+
+    function resolveHandLandmarks(source) {
+      if (!source) return null;
+      const candidates = [
+        Array.isArray(source) ? source : null,
+        source?.landmarks,
+        source?.landmark,
+        source?.points,
+        source?.coords,
+        source?.points2D,
+        source?.keypoints,
+        source?.normalizedLandmarks,
+        source?.joints,
+        source?.positions,
+        source?.data
+      ];
+      for (const candidate of candidates) {
+        if (Array.isArray(candidate) && candidate.length) {
+          return candidate;
+        }
+      }
+      const numericKeys = Object.keys(source).filter((key) => /^\d+$/.test(key));
+      if (numericKeys.length) {
+        numericKeys.sort((a, b) => Number(a) - Number(b));
+        const mapped = [];
+        for (const key of numericKeys) {
+          mapped[Number(key)] = source[key];
+        }
+        return mapped;
+      }
+      const landmarks = [];
+      let hasAny = false;
+      for (const [indexKey, aliases] of Object.entries(HAND_LANDMARK_ALIASES)) {
+        const index = Number(indexKey);
+        if (!Number.isFinite(index)) continue;
+        let value = null;
+        if (Array.isArray(aliases)) {
+          for (const alias of aliases) {
+            if (!alias) continue;
+            if (source[alias] != null) {
+              value = source[alias];
+              break;
+            }
+            const lower = alias.toLowerCase();
+            if (source[lower] != null) {
+              value = source[lower];
+              break;
+            }
+            const camel = alias
+              .toLowerCase()
+              .replace(/_(\w)/g, (_, ch) => ch.toUpperCase());
+            if (source[camel] != null) {
+              value = source[camel];
+              break;
+            }
+          }
+        }
+        landmarks[index] = value ?? null;
+        if (value != null) hasAny = true;
+      }
+      return hasAny ? landmarks : null;
+    }
+
+    function normalizeHandData(source) {
+      const raw = resolveHandLandmarks(source);
+      if (!raw) return null;
+      const points = new Array(21).fill(null);
+      for (let i = 0; i <= 20; i += 1) {
+        points[i] = normalizeHandPoint(raw[i]);
+      }
+      if (!points[0]) return null;
+      const palm = [];
+      for (const index of HAND_PALM_CHAIN) {
+        const pt = points[index];
+        if (!pt) return null;
+        palm.push({ x: pt.x, y: pt.y });
+      }
+      const fingers = {};
+      for (const [finger, chain] of Object.entries(HAND_FINGER_CHAINS)) {
+        const fingerPoints = [];
+        let valid = true;
+        for (const index of chain) {
+          const pt = points[index];
+          if (!pt) {
+            valid = false;
+            break;
+          }
+          fingerPoints.push({ x: pt.x, y: pt.y });
+        }
+        if (valid && fingerPoints.length >= 2) {
+          fingers[finger] = fingerPoints;
+        }
+      }
+      return { palm, fingers };
+    }
+
+    function detectHandSide(hand) {
+      if (!hand) return null;
+      const inspect = (value) => {
+        if (!value) return null;
+        if (typeof value === 'string') {
+          const normalized = value.toLowerCase();
+          if (normalized.includes('left')) return 'left';
+          if (normalized.includes('right')) return 'right';
+          return null;
+        }
+        if (Array.isArray(value)) {
+          for (const entry of value) {
+            const result = inspect(entry);
+            if (result) return result;
+          }
+          return null;
+        }
+        if (typeof value === 'object') {
+          const candidates = [
+            value.label,
+            value.category,
+            value.categoryName,
+            value.type,
+            value.side,
+            value.name
+          ];
+          for (const candidate of candidates) {
+            const result = inspect(candidate);
+            if (result) return result;
+          }
+        }
+        return null;
+      };
+      const candidates = [
+        hand.side,
+        hand.label,
+        hand.type,
+        hand.which,
+        hand.name,
+        hand.category,
+        hand.handedness,
+        hand.handedness?.label,
+        hand.handedness?.categoryName,
+        hand.handedness?.type
+      ];
+      for (const candidate of candidates) {
+        const result = inspect(candidate);
+        if (result) return result;
+      }
+      return null;
+    }
+
+    function extractHandFromKeypoints(keypoints, side) {
+      if (!keypoints || !HAND_KEYPOINT_NAME_MAP[side]) return null;
+      const map = HAND_KEYPOINT_NAME_MAP[side];
+      const raw = [];
+      let count = 0;
+      for (const [indexKey, names] of Object.entries(map)) {
+        const index = Number(indexKey);
+        if (!Number.isFinite(index)) continue;
+        let value = null;
+        for (const name of names) {
+          if (!name) continue;
+          if (keypoints[name]) {
+            value = keypoints[name];
+            break;
+          }
+        }
+        raw[index] = value ?? null;
+        if (value != null) count += 1;
+      }
+      if (!count) return null;
+      return normalizeHandData(raw);
+    }
+
+    function extractHandsFromFrame(frame, keypoints) {
+      const result = { left: null, right: null };
+      const visitedContainers = new Set();
+      const visitedCollections = new Set();
+      const assign = (side, source) => {
+        if (!source || (side !== 'left' && side !== 'right') || result[side]) return;
+        const normalized = normalizeHandData(source);
+        if (normalized) {
+          result[side] = normalized;
+        }
+      };
+
+      const inspectCollection = (collection) => {
+        if (
+          !collection ||
+          visitedCollections.has(collection) ||
+          (result.left && result.right)
+        )
+          return;
+        visitedCollections.add(collection);
+        if (Array.isArray(collection)) {
+          for (const entry of collection) {
+            if (result.left && result.right) break;
+            const side = detectHandSide(entry);
+            if (side) {
+              assign(side, entry);
+            }
+          }
+        } else if (typeof collection === 'object') {
+          inspectContainer(collection);
+        }
+      };
+
+      const inspectContainer = (container) => {
+        if (!container || visitedContainers.has(container) || (result.left && result.right)) return;
+        visitedContainers.add(container);
+        const directLeft = HAND_SIDE_KEYS.left;
+        const directRight = HAND_SIDE_KEYS.right;
+        for (const key of directLeft) {
+          if (result.left) break;
+          assign('left', readHandProperty(container, key));
+        }
+        for (const key of directRight) {
+          if (result.right) break;
+          assign('right', readHandProperty(container, key));
+        }
+        const collections = [
+          container.hands,
+          container.hand,
+          container.multiHandLandmarks,
+          container.handLandmarks,
+          container.multiHands
+        ];
+        for (const candidate of collections) {
+          if (result.left && result.right) break;
+          inspectCollection(candidate);
+        }
+      };
+
+      inspectContainer(frame);
+      inspectContainer(frame?.live);
+      inspectCollection(frame?.live?.hands);
+      inspectCollection(frame?.live?.hand);
+      inspectCollection(frame?.live?.multiHandLandmarks);
+      inspectCollection(frame?.live?.handLandmarks);
+      inspectCollection(frame?.live?.multiHands);
+
+      if (!result.left) {
+        const leftFallback = extractHandFromKeypoints(keypoints, 'left');
+        if (leftFallback) result.left = leftFallback;
+      }
+      if (!result.right) {
+        const rightFallback = extractHandFromKeypoints(keypoints, 'right');
+        if (rightFallback) result.right = rightFallback;
+      }
+      return result;
+    }
+
+    function fingerCapsuleRadius(finger) {
+      const width = FINGER_CAPSULE_WIDTHS[finger] ?? 20;
+      const radius = width / 2;
+      return radius > 0 ? radius : 6;
+    }
+
+    function buildCapsulePath(start, end, radius) {
+      if (!start || !end || !Number.isFinite(radius) || radius <= 0) return '';
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const length = Math.hypot(dx, dy);
+      if (!Number.isFinite(length) || length < 1e-3) return '';
+      const ux = dx / length;
+      const uy = dy / length;
+      const px = -uy;
+      const py = ux;
+      const offsetX = px * radius;
+      const offsetY = py * radius;
+      const a1 = { x: start.x + offsetX, y: start.y + offsetY };
+      const a2 = { x: start.x - offsetX, y: start.y - offsetY };
+      const b1 = { x: end.x + offsetX, y: end.y + offsetY };
+      const b2 = { x: end.x - offsetX, y: end.y - offsetY };
+      const r = formatFloat(radius);
+      return [
+        'M',
+        formatFloat(a1.x),
+        formatFloat(a1.y),
+        'L',
+        formatFloat(b1.x),
+        formatFloat(b1.y),
+        'A',
+        r,
+        r,
+        '0 0 1',
+        formatFloat(b2.x),
+        formatFloat(b2.y),
+        'L',
+        formatFloat(a2.x),
+        formatFloat(a2.y),
+        'A',
+        r,
+        r,
+        '0 0 1',
+        formatFloat(a1.x),
+        formatFloat(a1.y),
+        'Z'
+      ].join(' ');
+    }
+
+    function ensureDebugHands(svg = svgEl) {
+      const context = svg || svgEl;
+      if (!context) return handDebug;
+      let root = context.getElementById ? context.getElementById('debugHands') : null;
+      if (!root) {
+        root = document.createElementNS(NS, 'g');
+        root.id = 'debugHands';
+        root.setAttribute('fill', 'none');
+        root.style.pointerEvents = 'none';
+      }
+      if (root.parentNode !== context) {
+        context.appendChild(root);
+      }
+      handDebug.root = root;
+      const ensureSide = (side) => {
+        const info = handDebug[side];
+        if (!info) return;
+        let group = context.getElementById ? context.getElementById(`debugHand-${side}`) : null;
+        if (!group) {
+          group = document.createElementNS(NS, 'g');
+          group.id = `debugHand-${side}`;
+        }
+        if (group.parentNode !== root) {
+          root.appendChild(group);
+        }
+        info.group = group;
+        if (!group.hasAttribute('data-debug-initialized')) {
+          group.style.display = 'none';
+          group.setAttribute('data-debug-initialized', 'true');
+        }
+
+        let palm = context.getElementById ? context.getElementById(`${side}-palm`) : null;
+        if (!palm) {
+          palm = document.createElementNS(NS, 'polyline');
+          palm.id = `${side}-palm`;
+        }
+        palm.setAttribute('fill', 'none');
+        palm.setAttribute('stroke', 'rgba(74, 139, 255, 0.55)');
+        palm.setAttribute('stroke-width', '5');
+        palm.setAttribute('stroke-linecap', 'round');
+        palm.setAttribute('stroke-linejoin', 'round');
+        palm.style.pointerEvents = 'none';
+        palm.style.mixBlendMode = 'screen';
+        if (palm.parentNode !== group) {
+          group.appendChild(palm);
+        }
+        info.palm = palm;
+        palm.style.display = 'none';
+
+        let bonesGroup = context.getElementById ? context.getElementById(`${side}-bones`) : null;
+        if (!bonesGroup) {
+          bonesGroup = document.createElementNS(NS, 'g');
+          bonesGroup.id = `${side}-bones`;
+        }
+        bonesGroup.style.pointerEvents = 'none';
+        bonesGroup.setAttribute('fill', 'none');
+        bonesGroup.setAttribute('stroke-linecap', 'round');
+        bonesGroup.setAttribute('stroke-linejoin', 'round');
+        if (bonesGroup.parentNode !== group) {
+          group.appendChild(bonesGroup);
+        }
+        info.bonesGroup = bonesGroup;
+
+        let capsulesGroup = context.getElementById ? context.getElementById(`${side}-capsules`) : null;
+        if (!capsulesGroup) {
+          capsulesGroup = document.createElementNS(NS, 'g');
+          capsulesGroup.id = `${side}-capsules`;
+        }
+        capsulesGroup.style.pointerEvents = 'none';
+        capsulesGroup.setAttribute('stroke-linecap', 'round');
+        capsulesGroup.setAttribute('stroke-linejoin', 'round');
+        if (capsulesGroup.parentNode !== group) {
+          group.appendChild(capsulesGroup);
+        }
+        info.capsulesGroup = capsulesGroup;
+
+        if (!(info.bones instanceof Map)) {
+          info.bones = new Map();
+        }
+        if (!(info.capsules instanceof Map)) {
+          info.capsules = new Map();
+        }
+      };
+
+      ensureSide('left');
+      ensureSide('right');
+
+      if (debugToggles && typeof debugToggles.fingers !== 'undefined') {
+        root.style.display = debugToggles.fingers ? '' : 'none';
+      }
+
+      return handDebug;
+    }
+
+    function getOrCreateHandLine(info, key) {
+      if (!info || !info.bonesGroup) return null;
+      let line = info.bones.get(key);
+      if (!line) {
+        line = document.createElementNS(NS, 'line');
+        line.setAttribute('stroke', 'rgba(74, 139, 255, 0.65)');
+        line.setAttribute('stroke-width', '4');
+        line.setAttribute('stroke-linecap', 'round');
+        line.setAttribute('stroke-linejoin', 'round');
+        line.style.pointerEvents = 'none';
+        info.bonesGroup.appendChild(line);
+        info.bones.set(key, line);
+      } else if (line.parentNode !== info.bonesGroup) {
+        info.bonesGroup.appendChild(line);
+      }
+      return line;
+    }
+
+    function getOrCreateHandCapsule(info, key, finger) {
+      if (!info || !info.capsulesGroup) return null;
+      let capsule = info.capsules.get(key);
+      if (!capsule) {
+        capsule = document.createElementNS(NS, 'path');
+        capsule.setAttribute('fill', 'rgba(255, 204, 173, 0.5)');
+        capsule.setAttribute('stroke', 'rgba(214, 160, 130, 0.6)');
+        capsule.setAttribute('stroke-width', '2');
+        capsule.setAttribute('stroke-linecap', 'round');
+        capsule.setAttribute('stroke-linejoin', 'round');
+        capsule.style.pointerEvents = 'none';
+        info.capsulesGroup.appendChild(capsule);
+        info.capsules.set(key, capsule);
+      } else if (capsule.parentNode !== info.capsulesGroup) {
+        info.capsulesGroup.appendChild(capsule);
+      }
+      capsule.dataset.finger = finger;
+      return capsule;
+    }
+
+    function hideHandSide(info) {
+      if (!info) return;
+      if (info.group) info.group.style.display = 'none';
+      if (info.palm) info.palm.style.display = 'none';
+      if (info.bones instanceof Map) {
+        for (const line of info.bones.values()) {
+          if (line) line.style.display = 'none';
+        }
+      }
+      if (info.capsules instanceof Map) {
+        for (const capsule of info.capsules.values()) {
+          if (capsule) capsule.style.display = 'none';
+        }
+      }
+    }
+
+    function updateHandSideDebug(side, handData, rig) {
+      const info = handDebug[side];
+      if (!info || !info.group || !handData || !rig) {
+        hideHandSide(info);
+        return false;
+      }
+      const palmPoints = mapPoints(handData.palm, rig);
+      if (!Array.isArray(palmPoints) || !palmPoints.length) {
+        hideHandSide(info);
+        return false;
+      }
+      ensureDebugHands();
+      placePolyline(info.palm, palmPoints);
+      info.palm.style.display = '';
+      const usedBones = new Set();
+      const usedCapsules = new Set();
+      const fingers = handData.fingers || {};
+      for (const [finger, chain] of Object.entries(fingers)) {
+        const mappedFinger = mapPoints(chain, rig);
+        if (!Array.isArray(mappedFinger) || mappedFinger.length < 2) continue;
+        for (let i = 0; i < mappedFinger.length - 1; i += 1) {
+          const start = mappedFinger[i];
+          const end = mappedFinger[i + 1];
+          const key = `${finger}-${i}`;
+          const line = getOrCreateHandLine(info, key);
+          if (line) {
+            placeLine(line, start, end);
+            line.style.display = '';
+            usedBones.add(key);
+          }
+          const capsule = getOrCreateHandCapsule(info, key, finger);
+          if (capsule) {
+            const radius = fingerCapsuleRadius(finger);
+            const path = buildCapsulePath(start, end, radius);
+            if (path) {
+              capsule.setAttribute('d', path);
+              capsule.style.display = '';
+              usedCapsules.add(key);
+            } else {
+              capsule.style.display = 'none';
+            }
+          }
+        }
+      }
+      if (info.bones instanceof Map) {
+        for (const [key, line] of info.bones.entries()) {
+          if (!usedBones.has(key) && line) {
+            line.style.display = 'none';
+          }
+        }
+      }
+      if (info.capsules instanceof Map) {
+        for (const [key, capsule] of info.capsules.entries()) {
+          if (!usedCapsules.has(key) && capsule) {
+            capsule.style.display = 'none';
+          }
+        }
+      }
+      info.group.style.display = '';
+      return true;
+    }
+
+    function updateHandsDebug(hands, rig) {
+      ensureDebugHands();
+      if (!handDebug.root) return;
+      const left = hands?.left || null;
+      const right = hands?.right || null;
+      const leftUpdated = updateHandSideDebug('left', left, rig);
+      const rightUpdated = updateHandSideDebug('right', right, rig);
+      if (!leftUpdated && !rightUpdated) {
+        hideHandSide(handDebug.left);
+        hideHandSide(handDebug.right);
+      }
+      if (debugToggles && typeof debugToggles.fingers !== 'undefined') {
+        handDebug.root.style.display = debugToggles.fingers ? '' : 'none';
+      }
+    }
+
     function computeSimilarityTransform(fromPoints, toPoints) {
       if (!Array.isArray(fromPoints) || !Array.isArray(toPoints)) return null;
       const count = Math.min(fromPoints.length, toPoints.length);
@@ -774,9 +1490,11 @@
       const showRight = debugToggles.rightArm;
       const showBody = debugToggles.body;
       const showFace = debugToggles.face;
+      const showHands = debugToggles.fingers;
 
       if (armPaths.left) armPaths.left.style.display = showLeft ? 'block' : 'none';
       if (armPaths.right) armPaths.right.style.display = showRight ? 'block' : 'none';
+      if (handDebug.root) handDebug.root.style.display = showHands ? '' : 'none';
 
       const toggle = (elements, show) => {
         for (const el of elements) {
@@ -824,8 +1542,27 @@
     const armPaths = { left: null, right: null };
     let running = false;
     const puppetArms = {
-      left: { upper: null, lower: null, ready: false, warningShown: false, base: { upper: null, lower: null } },
-      right: { upper: null, lower: null, ready: false, warningShown: false, base: { upper: null, lower: null } }
+      left: { upper: null, lower: null, ready: false, warningShown: false, base: { A: null, B: null, C: null } },
+      right: { upper: null, lower: null, ready: false, warningShown: false, base: { A: null, B: null, C: null } }
+    };
+    const handDebug = {
+      root: null,
+      left: {
+        group: null,
+        palm: null,
+        bonesGroup: null,
+        capsulesGroup: null,
+        bones: new Map(),
+        capsules: new Map()
+      },
+      right: {
+        group: null,
+        palm: null,
+        bonesGroup: null,
+        capsulesGroup: null,
+        bones: new Map(),
+        capsules: new Map()
+      }
     };
     function normalizePuppetStructure() {
       if (!svgEl) return;
@@ -921,50 +1658,65 @@
       el.style.transform = '';
     }
 
-    function ensurePuppetArm(side) {
+    function ensurePuppetArm(side, svg = svgEl) {
+      const context = svg || svgEl;
       const arm = puppetArms[side];
-      const bases = PUPPET_ARM_BASES?.[side];
-      if (!arm || !bases) {
-        if (arm) arm.ready = false;
-        return false;
+      if (!context || !arm) return null;
+      const upper = context.getElementById ? context.getElementById(`${side}UpperArm`) : null;
+      const lower = context.getElementById ? context.getElementById(`${side}LowerArm`) : null;
+      arm.upper = upper || null;
+      arm.lower = lower || null;
+      arm.base.A = parseDataPoint(upper?.dataset?.shoulder) || null;
+      arm.base.B = parseDataPoint(upper?.dataset?.elbow) || null;
+      arm.base.C = parseDataPoint(lower?.dataset?.wrist) || null;
+      arm.ready = Boolean(arm.upper && arm.lower && arm.base.A && arm.base.B && arm.base.C);
+      if (arm.upper) {
+        configureArmElement(arm.upper);
+        arm.upper.classList.add('joint');
       }
-      const { upper, lower } = arm;
-      if (!upper || !lower) {
-        arm.ready = false;
-        return false;
+      if (arm.lower) {
+        configureArmElement(arm.lower);
+        arm.lower.classList.add('joint');
       }
-      configureArmElement(upper);
-      configureArmElement(lower);
-      arm.base.upper = bases.upper ? bases.upper.map((pt) => ({ x: pt.x, y: pt.y })) : null;
-      arm.base.lower = bases.lower ? bases.lower.map((pt) => ({ x: pt.x, y: pt.y })) : null;
-      arm.ready = Boolean(arm.base.upper && arm.base.lower);
-      if (!arm.ready) {
-        return false;
+      if (arm.ready) {
+        lastArmMatrices[side].upper = null;
+        lastArmMatrices[side].lower = null;
+        return arm;
       }
-      lastArmMatrices[side].upper = null;
-      lastArmMatrices[side].lower = null;
-      return true;
+      return null;
     }
 
     function applyArmRig(side, rig) {
       const arm = puppetArms[side];
-      if (!arm || !arm.ready || !rig) return;
-      const bases = arm.base || {};
-      const { A, B, C } = rig;
-      if (A && B && arm.upper) {
-        const matrix = rotatePuppetSegment(arm.upper, A, B, side, 'upper');
-        if (matrix) {
-          const baseSegment = bases.upper || PUPPET_ARM_BASES?.[side]?.upper || [];
-          validateSegment(`arm-${side}-upper`, baseSegment, [A, B], matrix);
-        }
+      if (!arm || !arm.ready) {
+        return;
       }
-      if (B && C && arm.lower) {
-        const matrix = rotatePuppetSegment(arm.lower, B, C, side, 'lower');
-        if (matrix) {
-          const baseSegment = bases.lower || PUPPET_ARM_BASES?.[side]?.lower || [];
-          validateSegment(`arm-${side}-lower`, baseSegment, [B, C], matrix);
+      const live = rig || lastArmRigs[side] || null;
+      const { A, B, C } = live || {};
+      const applySegment = (element, baseStart, baseEnd, targetStart, targetEnd, key, label) => {
+        if (!element || !baseStart || !baseEnd) {
+          return null;
         }
-      }
+        const matrix = targetStart && targetEnd
+          ? similarityFrom2Points(baseStart, baseEnd, targetStart, targetEnd)
+          : null;
+        const next = matrix || lastArmMatrices[side][key] || null;
+        if (!next) {
+          applyMatrixToElement(element, null);
+          return null;
+        }
+        applyMatrixToElement(element, next);
+        if (matrix) {
+          lastArmMatrices[side][key] = matrix;
+          if (targetStart && targetEnd) {
+            validateSegment(label, [baseStart, baseEnd], [targetStart, targetEnd], matrix);
+          }
+        }
+        return next;
+      };
+
+      applySegment(arm.upper, arm.base.A, arm.base.B, A, B, 'upper', `arm-${side}-upper`);
+      applySegment(arm.lower, arm.base.B, arm.base.C, B, C, 'lower', `arm-${side}-lower`);
     }
 
     function seg(id, stroke = '#4a8bff', width = 10) {
@@ -1511,46 +2263,6 @@
       return pts;
     }
 
-    function buildSegmentMatrix(baseStart, baseEnd, targetStart, targetEnd) {
-      if (!baseStart || !baseEnd || !targetStart || !targetEnd) return null;
-      const baseDx = baseEnd.x - baseStart.x;
-      const baseDy = baseEnd.y - baseStart.y;
-      const targetDx = targetEnd.x - targetStart.x;
-      const targetDy = targetEnd.y - targetStart.y;
-      const baseLen = Math.hypot(baseDx, baseDy);
-      const targetLen = Math.hypot(targetDx, targetDy);
-      if (baseLen < 1e-6 || targetLen < 1e-6) return null;
-      const scale = targetLen / baseLen;
-      const baseAngle = Math.atan2(baseDy, baseDx);
-      const targetAngle = Math.atan2(targetDy, targetDx);
-      const angle = targetAngle - baseAngle;
-      const cos = Math.cos(angle);
-      const sin = Math.sin(angle);
-      const a = scale * cos;
-      const b = scale * sin;
-      const c = -scale * sin;
-      const d = scale * cos;
-      const e = targetStart.x - (a * baseStart.x + c * baseStart.y);
-      const f = targetStart.y - (b * baseStart.x + d * baseStart.y);
-      return { a, b, c, d, e, f };
-    }
-
-    function rotatePuppetSegment(el, origin, target, side, key) {
-      if (!el || !origin || !target) return null;
-      const base = puppetArms?.[side]?.base?.[key] || PUPPET_ARM_BASES?.[side]?.[key];
-      if (!Array.isArray(base) || base.length < 2) return null;
-      const [baseStart, baseEnd] = base;
-      const matrix =
-        buildSegmentMatrix(baseStart, baseEnd, origin, target) || lastArmMatrices[side][key];
-      if (!matrix) return null;
-      lastArmMatrices[side][key] = matrix;
-      const { a, b, c, d, e, f } = matrix;
-      el.setAttribute('transform', `matrix(${a} ${b} ${c} ${d} ${e} ${f})`);
-      el.style.transform = '';
-      el.style.transformOrigin = '';
-      return matrix;
-    }
-
     function alignLimbToPuppet(rawArm, lengths) {
       if (!rawArm || !lengths) return null;
       const { A, B, C } = rawArm;
@@ -1847,6 +2559,7 @@
         lower: PUPPET_RIGHT_LOWER_ARM_LEN
       });
       const torsoRig = computeTorsoRig(LSh, RSh, LH, RH, rig);
+      const hands = extractHandsFromFrame(frame, kp);
 
       if (leftArmRig) {
         const { A, B, C } = leftArmRig;
@@ -1855,7 +2568,6 @@
         }
         placeLine(segments.left.upper, A, B);
         placeLine(segments.left.lower, B, C);
-        applyArmRig('left', leftArmRig);
       }
 
       if (rightArmRig) {
@@ -1865,8 +2577,11 @@
         }
         placeLine(segments.right.upper, A, B);
         placeLine(segments.right.lower, B, C);
-        applyArmRig('right', rightArmRig);
       }
+
+      applyArmRig('left', leftArmRig);
+      applyArmRig('right', rightArmRig);
+      updateHandsDebug(hands, rig);
 
       let neckBase = null;
       if (torsoRig) {
@@ -2207,90 +2922,32 @@
           }
         }
 
-        const armCandidates = {
-          left: {
-            upper: [
-              'leftUpperArm',
-              'LeftUpperArm',
-              'left_upper_arm',
-              'Left_arm_upper',
-              'leftArmUpper',
-              'leftupperarm',
-              'leftArm_Upper'
-            ],
-            lower: [
-              'leftLowerArm',
-              'LeftLowerArm',
-              'left_lower_arm',
-              'Left_arm_lower',
-              'leftArmLower',
-              'leftlowerarm',
-              'leftArm_Lower'
-            ]
-          },
-          right: {
-            upper: [
-              'rightUpperArm',
-              'RightUpperArm',
-              'right_upper_arm',
-              'Right_arm_upper',
-              'rightArmUpper',
-              'rightupperarm',
-              'rightArm_Upper'
-            ],
-            lower: [
-              'rightLowerArm',
-              'RightLowerArm',
-              'right_lower_arm',
-              'Right_arm_lower',
-              'rightArmLower',
-              'rightlowerarm',
-              'rightArm_Lower'
-            ]
+        const attachArmPart = (el) => {
+          if (!el) return;
+          el.style.transformBox = 'fill-box';
+          el.classList.add('joint');
+          el.removeAttribute('transform');
+          el.style.transform = '';
+          el.style.transformOrigin = '';
+          if (el.parentNode) {
+            el.parentNode.appendChild(el);
           }
         };
 
-        const findArmPart = (candidates) => {
-          for (const id of candidates) {
-            const el = svgEl.getElementById(id);
-            if (el) return el;
-          }
-          return null;
-        };
+        ensurePuppetArm('left', svgEl);
+        ensurePuppetArm('right', svgEl);
+        ensureDebugHands(svgEl);
 
-        const setupArmPart = (side) => {
-          const candidates = armCandidates[side];
-          const upper = findArmPart(candidates.upper);
-          const lower = findArmPart(candidates.lower);
-          puppetArms[side].upper = upper;
-          puppetArms[side].lower = lower;
-          const ready = ensurePuppetArm(side);
-          puppetArms[side].ready = ready;
-
-          if (!ready && !puppetArms[side].warningShown) {
+        ['left', 'right'].forEach((side) => {
+          const arm = puppetArms[side];
+          if (!arm.ready && !arm.warningShown) {
             const sideLabel = side === 'left' ? 'esquerdo' : 'direito';
             console.warn(`Braço ${sideLabel} do puppet não encontrado em boy.svg; mantendo modo debug.`);
-            puppetArms[side].warningShown = true;
+            arm.warningShown = true;
           }
-
-          const attach = (el) => {
-            if (!el) return;
-            el.style.transformBox = 'fill-box';
-            el.classList.add('joint');
-            el.removeAttribute('transform');
-            el.style.transform = '';
-            el.style.transformOrigin = '';
-            if (el.parentNode) {
-              el.parentNode.appendChild(el);
-            }
-          };
-
-          attach(upper);
-          attach(lower);
-        };
-
-        setupArmPart('left');
-        setupArmPart('right');
+          attachArmPart(arm.upper);
+          attachArmPart(arm.lower);
+        });
 
         updateVisibility();
         tryStart();
