@@ -2188,10 +2188,10 @@
           const nux = -uy;
           const nuy = ux;
           const arch = state.archHeight || targetArch;
-          const mid = mid(start, end);
+          const midPointSmooth = mid(start, end);
           const peakBase = {
-            x: mid.x + nux * arch,
-            y: mid.y + nuy * arch
+            x: midPointSmooth.x + nux * arch,
+            y: midPointSmooth.y + nuy * arch
           };
           state.smoothPeak = EMA(state.smoothPeak, peakBase, 0.32);
           const peak = state.smoothPeak || peakBase;
