@@ -160,6 +160,7 @@
     <button type="button" class="debug-toggle" data-toggle-target="rightArm" aria-pressed="true">Braço direito</button>
     <button type="button" class="debug-toggle" data-toggle-target="body" aria-pressed="true">Corpo</button>
     <button type="button" class="debug-toggle" data-toggle-target="face" aria-pressed="true">Rosto</button>
+    <button type="button" class="debug-toggle" data-toggle-target="faceOverlay" aria-pressed="true">Face (overlay)</button>
     <button type="button" class="debug-toggle" data-toggle-target="fingers" aria-pressed="true">Dedos</button>
   </section>
   <section id="playbackControls" aria-label="Controle de velocidade da animação">
@@ -375,8 +376,11 @@
       rightArm: DEBUG_ARM,
       body: true,
       face: true,
+      faceOverlay: true,
       fingers: true
     };
+    const FACE_OVERLAY_ID = 'faceSynth';
+    const LEGACY_FACE_OVERLAY_ID = 'face_overlay_layer';
     let faceTemplatesRoot = null;
     let faceOverlayLayer = null;
     let headTargets = [];
@@ -1096,6 +1100,7 @@
         root.id = 'debugHands';
         root.setAttribute('fill', 'none');
         root.style.pointerEvents = 'none';
+        root.setAttribute('data-debug-line', 'true');
       }
       if (root.parentNode !== context) {
         context.appendChild(root);
@@ -1492,6 +1497,7 @@
       const showBody = debugToggles.body;
       const showFace = debugToggles.face;
       const showHands = debugToggles.fingers;
+      const showFaceOverlay = debugToggles.faceOverlay;
 
       if (armPaths.left) armPaths.left.style.display = showLeft ? 'block' : 'none';
       if (armPaths.right) armPaths.right.style.display = showRight ? 'block' : 'none';
@@ -1515,6 +1521,10 @@
       ], showBody);
 
       toggle(segments.face.map((guide) => guide.debug), showFace);
+
+      if (faceOverlayLayer) {
+        faceOverlayLayer.style.display = showFaceOverlay ? '' : 'none';
+      }
 
       const updateArmElements = (side) => {
         const arm = puppetArms[side];
@@ -1697,7 +1707,7 @@
       const headNodes = [];
       const bodyNodes = [];
       const HEAD_THRESHOLD = 330;
-      const skipIds = new Set(['face_overlay_layer']);
+      const skipIds = new Set([FACE_OVERLAY_ID, LEGACY_FACE_OVERLAY_ID]);
 
       const children = Array.from(illustration.children);
       children.forEach((node) => {
@@ -1834,6 +1844,7 @@
       line.setAttribute('stroke-width', width);
       line.setAttribute('stroke-linecap', 'round');
       line.classList.add('joint');
+      line.setAttribute('data-debug-line', 'true');
       svgEl.appendChild(line);
       return line;
     }
@@ -1847,6 +1858,7 @@
       poly.setAttribute('stroke-linecap', 'round');
       poly.setAttribute('stroke-linejoin', 'round');
       poly.classList.add('joint');
+      poly.setAttribute('data-debug-line', 'true');
       svgEl.appendChild(poly);
       return poly;
     }
@@ -1947,6 +1959,29 @@
 
     const faceFeatureRegistry = new Map();
 
+    function positionFaceOverlayLayer() {
+      if (!svgEl || !faceOverlayLayer) return;
+      const parent = svgEl;
+      let reference = null;
+      const debugNode = parent.querySelector('[data-debug-line]');
+      if (debugNode && debugNode.parentNode === parent) {
+        reference = debugNode;
+      } else {
+        const headNode = svgEl.getElementById('head');
+        if (headNode && headNode.parentNode === parent) {
+          reference = headNode.nextSibling;
+        } else {
+          const illustration = svgEl.getElementById('illustration');
+          if (illustration && illustration.parentNode === parent) {
+            reference = illustration.nextSibling;
+          }
+        }
+      }
+      if (faceOverlayLayer.parentNode !== parent || faceOverlayLayer.nextSibling !== reference) {
+        parent.insertBefore(faceOverlayLayer, reference);
+      }
+    }
+
     function appendToFaceOverlay(element) {
       if (!element) return null;
       element.style.pointerEvents = 'none';
@@ -1955,6 +1990,7 @@
       } else if (svgEl) {
         svgEl.appendChild(element);
       }
+      positionFaceOverlayLayer();
       return element;
     }
 
@@ -1984,12 +2020,23 @@
             state.base = points.map((pt) => ({ x: pt.x, y: pt.y }));
           }
         },
-        update({ points, inverseMatrix }) {
+        update({ points, inverseMatrix, visible = true }) {
+          if (!visible) {
+            path.style.display = 'none';
+            return;
+          }
           const ptsGlobal = Array.isArray(points) && points.length >= 2 ? points : state.base;
-          if (!ptsGlobal || ptsGlobal.length < 2) return;
+          if (!ptsGlobal || ptsGlobal.length < 2) {
+            path.style.display = 'none';
+            return;
+          }
           const local = inverseMatrix ? mapPoints(ptsGlobal, inverseMatrix) : ptsGlobal;
           const pts = Array.isArray(local) && local.length >= 2 ? local : state.base;
-          if (!pts || pts.length < 2) return;
+          if (!pts || pts.length < 2) {
+            path.style.display = 'none';
+            return;
+          }
+          path.style.display = '';
           // Preserve the template styling while redrawing the brow in head-local space so the head transform keeps it attached.
           const data = buildSmoothPath(pts, { closed: false, tension: options.tension ?? 0.6 });
           path.setAttribute('d', data);
@@ -2044,20 +2091,35 @@
             state.base = points.map((pt) => ({ x: pt.x, y: pt.y }));
           }
         },
-        update({ points, inverseMatrix }) {
+        update({ points, inverseMatrix, visible = true }) {
+          if (!visible) {
+            group.style.display = 'none';
+            return;
+          }
           const ptsRaw = Array.isArray(points) && points.length ? points : state.base;
-          if (!Array.isArray(ptsRaw) || !ptsRaw.length) return;
+          if (!Array.isArray(ptsRaw) || !ptsRaw.length) {
+            group.style.display = 'none';
+            return;
+          }
           const localRaw = inverseMatrix ? mapPoints(ptsRaw, inverseMatrix) : ptsRaw;
           const working = Array.isArray(localRaw) && localRaw.length ? localRaw : state.base;
           const pts = normalizeLoopPoints(working || []);
-          if (!Array.isArray(pts) || pts.length < 3) return;
+          if (!Array.isArray(pts) || pts.length < 3) {
+            group.style.display = 'none';
+            return;
+          }
+          group.style.display = '';
           // Rebuild the eyelid path each frame in head-local space so the head transform keeps it glued to the mesh.
           const tension = options.tension ?? 0.75;
           const pathData = buildSmoothPath(pts, { closed: true, tension });
           outer.setAttribute('d', pathData);
 
           const len = pts.length;
-          if (len < 4) return;
+          if (len < 4) {
+            pupil.style.display = 'none';
+            highlight.style.display = 'none';
+            return;
+          }
           const idx = (i) => pts[(i + len) % len];
           const outerCorner = idx(0);
           const innerCorner = idx(Math.floor(len / 2));
@@ -2135,13 +2197,35 @@
             state.base[key] = points.map((pt) => ({ x: pt.x, y: pt.y }));
           }
         },
-        update({ points, part, inverseMatrix }) {
+        update({ points, part, inverseMatrix, visible = true }) {
           const key = part || options.part || 'default';
+          if (!visible) {
+            if (part === 'base') {
+              base.style.display = 'none';
+            } else {
+              bridge.style.display = 'none';
+            }
+            return;
+          }
           const ptsGlobal = Array.isArray(points) && points.length >= 2 ? points : state.base[key];
-          if (!ptsGlobal || ptsGlobal.length < 2) return;
+          if (!ptsGlobal || ptsGlobal.length < 2) {
+            if (part === 'base') {
+              base.style.display = 'none';
+            } else {
+              bridge.style.display = 'none';
+            }
+            return;
+          }
           const local = inverseMatrix ? mapPoints(ptsGlobal, inverseMatrix) : ptsGlobal;
           const pts = Array.isArray(local) && local.length >= 2 ? local : state.base[key];
-          if (!pts || pts.length < 2) return;
+          if (!pts || pts.length < 2) {
+            if (part === 'base') {
+              base.style.display = 'none';
+            } else {
+              bridge.style.display = 'none';
+            }
+            return;
+          }
           // Apply the template's stroke to a freshly generated curve that follows the live guide points in head space.
           const tension = part === 'base' ? options.baseTension ?? 0.55 : options.bridgeTension ?? 0.35;
           const data = buildSmoothPath(pts, { closed: false, tension });
@@ -2200,19 +2284,38 @@
             state.base[key] = points.map((pt) => ({ x: pt.x, y: pt.y }));
           }
         },
-        update({ points, part, inverseMatrix }) {
+        update({ points, part, inverseMatrix, visible = true }) {
           const key = part || options.part || 'default';
+          const mode = (part || options.part) === 'inner' ? 'inner' : 'outer';
+          const hidePart = () => {
+            if (mode === 'inner') {
+              inner.style.display = 'none';
+            } else {
+              outer.style.display = 'none';
+            }
+          };
+          if (!visible) {
+            hidePart();
+            return;
+          }
           const ptsRaw = Array.isArray(points) && points.length ? points : state.base[key];
-          if (!Array.isArray(ptsRaw) || !ptsRaw.length) return;
+          if (!Array.isArray(ptsRaw) || !ptsRaw.length) {
+            hidePart();
+            return;
+          }
           const localRaw = inverseMatrix ? mapPoints(ptsRaw, inverseMatrix) : ptsRaw;
           const working = Array.isArray(localRaw) && localRaw.length ? localRaw : state.base[key];
           const pts = normalizeLoopPoints(working || []);
-          if (!Array.isArray(pts) || pts.length < 3) return;
+          if (!Array.isArray(pts) || pts.length < 3) {
+            hidePart();
+            return;
+          }
           // Use the template colours on a path rebuilt from the pose data in head-local coordinates.
-          const tension = part === 'outer' ? options.outerTension ?? 0.6 : options.innerTension ?? 0.58;
+          const tension = mode === 'outer' ? options.outerTension ?? 0.6 : options.innerTension ?? 0.58;
           const data = buildSmoothPath(pts, { closed: true, tension });
-          if (part === 'outer') {
+          if (mode === 'outer') {
             outer.setAttribute('d', data);
+            outer.style.display = 'block';
             const half = Math.floor(pts.length / 2);
             const upperMid = centroid(pts.slice(0, half));
             const lowerMid = centroid(pts.slice(half));
@@ -2496,6 +2599,8 @@
       for (const segment of segments.face) {
         const { debug, handler, handlerEl, featurePart, ids, fallback, isContour, anchorIndex } = segment;
         const points = [];
+        let missingPosePoint = false;
+        let aborted = false;
         for (let i = 0; i < ids.length; i += 1) {
           const id = ids[i];
           const raw = safeKP(kp, id);
@@ -2506,16 +2611,17 @@
               continue;
             }
           }
+          missingPosePoint = true;
           if (fallback && fallback[i]) {
             points.push(fallback[i]);
-          } else {
-            points.length = 0;
-            break;
+            continue;
           }
+          aborted = true;
+          break;
         }
 
         let target = null;
-        if (points.length === ids.length) {
+        if (!aborted && points.length === ids.length) {
           placePolyline(debug, points);
           target = points;
         } else if (fallback && fallback.length) {
@@ -2530,9 +2636,12 @@
           contourAnchorIndex = typeof anchorIndex === 'number' ? anchorIndex : -1;
         }
 
+        const hasAllPoints = !missingPosePoint && !aborted && points.length === ids.length;
         pendingUpdates.push({
           segment,
-          target
+          target: hasAllPoints ? points : null,
+          fallback,
+          visible: hasAllPoints
         });
       }
       if (headMatrix && contourFallback && contourTarget && headAnchorBase) {
@@ -2581,19 +2690,21 @@
       const headInverse = headMatrix ? invertMatrix(headMatrix) : null;
 
       for (const update of pendingUpdates) {
-        const { segment, target } = update;
-        const { handler, handlerEl, featurePart, fallback, ids } = segment;
-        if (!handler || !target) continue;
+        const { segment, target, fallback, visible } = update;
+        const { handler, handlerEl, featurePart, ids } = segment;
+        if (!handler) continue;
+        const element = handlerEl || (handler && handler.el) || null;
         handler.update({
           points: target,
           part: featurePart,
           fallback,
           ids,
-          element: handlerEl || handler.el || null,
+          element,
           matrix: headMatrix,
           inverseMatrix: headInverse,
           contourFallback,
-          contourTarget
+          contourTarget,
+          visible
         });
       }
 
@@ -2799,32 +2910,19 @@
         const bodyGroup = svgEl.getElementById('puppet_body');
         if (bodyGroup) bodyTargets.push(bodyGroup);
         applyBodyTransform(null);
-        faceOverlayLayer = svgEl.getElementById('face_overlay_layer');
+        faceOverlayLayer = svgEl.getElementById(FACE_OVERLAY_ID) || svgEl.getElementById(LEGACY_FACE_OVERLAY_ID);
         if (!faceOverlayLayer) {
           faceOverlayLayer = document.createElementNS(NS, 'g');
-          faceOverlayLayer.id = 'face_overlay_layer';
         }
+        faceOverlayLayer.id = FACE_OVERLAY_ID;
+        faceOverlayLayer.setAttribute('aria-label', 'face overlay');
         faceOverlayLayer.style.pointerEvents = 'none';
-
-        if (headRig) {
-          const reference = headFront && headFront.parentNode === headRig ? headFront : null;
-          if (reference) {
-            if (faceOverlayLayer.parentNode !== headRig || faceOverlayLayer.nextSibling !== reference) {
-              headRig.insertBefore(faceOverlayLayer, reference);
-            }
-          } else if (faceOverlayLayer.parentNode !== headRig) {
-            headRig.appendChild(faceOverlayLayer);
-          }
-        } else if (headFront && headFront.parentNode) {
-          if (faceOverlayLayer.parentNode !== headFront.parentNode || faceOverlayLayer.nextSibling !== headFront) {
-            headFront.parentNode.insertBefore(faceOverlayLayer, headFront);
-          }
-        } else if (headBase && headBase.parentNode) {
-          if (faceOverlayLayer.parentNode !== headBase.parentNode) {
-            headBase.parentNode.insertBefore(faceOverlayLayer, headBase.nextSibling);
-          }
-        } else if (!faceOverlayLayer.parentNode && svgEl) {
+        if (!faceOverlayLayer.parentNode) {
           svgEl.appendChild(faceOverlayLayer);
+        }
+        positionFaceOverlayLayer();
+        if (faceOverlayLayer && !headTargets.includes(faceOverlayLayer)) {
+          headTargets.push(faceOverlayLayer);
         }
         faceFeatureRegistry.clear();
         headAnchorBase = null;
@@ -2839,6 +2937,7 @@
         armPaths.left.setAttribute('stroke-linecap', 'round');
         armPaths.left.setAttribute('stroke-linejoin', 'round');
         armPaths.left.setAttribute('stroke-opacity', '0.95');
+        armPaths.left.setAttribute('data-debug-line', 'true');
         svgEl.appendChild(armPaths.left);
 
         armPaths.right = document.createElementNS(NS, 'path');
@@ -2849,6 +2948,7 @@
         armPaths.right.setAttribute('stroke-linecap', 'round');
         armPaths.right.setAttribute('stroke-linejoin', 'round');
         armPaths.right.setAttribute('stroke-opacity', '0.95');
+        armPaths.right.setAttribute('data-debug-line', 'true');
         svgEl.appendChild(armPaths.right);
         segments.left.upper = seg('L_upper');
         segments.left.lower = seg('L_lower');
@@ -3059,6 +3159,7 @@
         });
 
         updateVisibility();
+        positionFaceOverlayLayer();
         tryStart();
       })
       .catch((err) => {
