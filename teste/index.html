@@ -408,6 +408,26 @@
       ring: [0, 13, 14, 15, 16],
       pinky: [0, 17, 18, 19, 20]
     };
+    const HAND_SIDE_KEYS = {
+      left: [
+        'left',
+        'leftHand',
+        'left_hand',
+        'handLeft',
+        'leftHandLandmarks',
+        'leftLandmarks',
+        'leftPalm'
+      ],
+      right: [
+        'right',
+        'rightHand',
+        'right_hand',
+        'handRight',
+        'rightHandLandmarks',
+        'rightLandmarks',
+        'rightPalm'
+      ]
+    };
     const HAND_LANDMARK_ALIASES = {
       0: ['WRIST'],
       1: ['THUMB_CMC', 'THUMB0', 'THUMB_CARPAL', 'THUMB_BASE'],
@@ -737,6 +757,38 @@
       return null;
     }
 
+    function propertyVariants(key) {
+      if (typeof key !== 'string' || !key.length) return [key];
+      const variants = new Set();
+      variants.add(key);
+      variants.add(key.toLowerCase());
+      variants.add(key.toUpperCase());
+      const camel = key.replace(/[_\s-]+(\w)/g, (_, ch) => ch.toUpperCase());
+      if (camel) {
+        variants.add(camel);
+        variants.add(camel.charAt(0).toLowerCase() + camel.slice(1));
+        variants.add(camel.charAt(0).toUpperCase() + camel.slice(1));
+      }
+      const snake = key
+        .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+        .replace(/[-\s]+/g, '_')
+        .toLowerCase();
+      if (snake) {
+        variants.add(snake);
+      }
+      return Array.from(variants);
+    }
+
+    function readHandProperty(source, key) {
+      if (!source || !key) return null;
+      for (const variant of propertyVariants(key)) {
+        if (variant && source[variant] != null) {
+          return source[variant];
+        }
+      }
+      return null;
+    }
+
     function resolveHandLandmarks(source) {
       if (!source) return null;
       const candidates = [
@@ -909,33 +961,71 @@
 
     function extractHandsFromFrame(frame, keypoints) {
       const result = { left: null, right: null };
-      if (!frame) return result;
-      const sources =
-        frame.hands ??
-        frame.hand ??
-        frame.multiHandLandmarks ??
-        frame.handLandmarks ??
-        frame.multiHands ??
-        null;
+      const visitedContainers = new Set();
+      const visitedCollections = new Set();
       const assign = (side, source) => {
-        if (!source || (side !== 'left' && side !== 'right')) return;
+        if (!source || (side !== 'left' && side !== 'right') || result[side]) return;
         const normalized = normalizeHandData(source);
         if (normalized) {
           result[side] = normalized;
         }
       };
-      if (Array.isArray(sources)) {
-        for (const hand of sources) {
-          const side = detectHandSide(hand);
-          if (!side || result[side]) continue;
-          assign(side, hand);
+
+      const inspectCollection = (collection) => {
+        if (
+          !collection ||
+          visitedCollections.has(collection) ||
+          (result.left && result.right)
+        )
+          return;
+        visitedCollections.add(collection);
+        if (Array.isArray(collection)) {
+          for (const entry of collection) {
+            if (result.left && result.right) break;
+            const side = detectHandSide(entry);
+            if (side) {
+              assign(side, entry);
+            }
+          }
+        } else if (typeof collection === 'object') {
+          inspectContainer(collection);
         }
-      } else if (sources && typeof sources === 'object') {
-        assign('left', sources.left || sources.Left || sources.LEFT);
-        assign('right', sources.right || sources.Right || sources.RIGHT);
-        if (!result.left && Array.isArray(sources.leftHand)) assign('left', sources.leftHand);
-        if (!result.right && Array.isArray(sources.rightHand)) assign('right', sources.rightHand);
-      }
+      };
+
+      const inspectContainer = (container) => {
+        if (!container || visitedContainers.has(container) || (result.left && result.right)) return;
+        visitedContainers.add(container);
+        const directLeft = HAND_SIDE_KEYS.left;
+        const directRight = HAND_SIDE_KEYS.right;
+        for (const key of directLeft) {
+          if (result.left) break;
+          assign('left', readHandProperty(container, key));
+        }
+        for (const key of directRight) {
+          if (result.right) break;
+          assign('right', readHandProperty(container, key));
+        }
+        const collections = [
+          container.hands,
+          container.hand,
+          container.multiHandLandmarks,
+          container.handLandmarks,
+          container.multiHands
+        ];
+        for (const candidate of collections) {
+          if (result.left && result.right) break;
+          inspectCollection(candidate);
+        }
+      };
+
+      inspectContainer(frame);
+      inspectContainer(frame?.live);
+      inspectCollection(frame?.live?.hands);
+      inspectCollection(frame?.live?.hand);
+      inspectCollection(frame?.live?.multiHandLandmarks);
+      inspectCollection(frame?.live?.handLandmarks);
+      inspectCollection(frame?.live?.multiHands);
+
       if (!result.left) {
         const leftFallback = extractHandFromKeypoints(keypoints, 'left');
         if (leftFallback) result.left = leftFallback;
