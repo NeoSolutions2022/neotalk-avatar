@@ -107,6 +107,55 @@ FACE_INDICES = {
     "leftPupil": 69,
 }
 
+HAND_LANDMARK_NAMES = {
+    "left_hand": {
+        0: ["leftWrist"],
+        1: ["leftThumbCMC", "leftThumb0", "leftThumb1"],
+        2: ["leftThumbMCP", "leftThumb2"],
+        3: ["leftThumbIP", "leftThumb3"],
+        4: ["leftThumbTip", "leftThumb4"],
+        5: ["leftIndexMCP", "leftIndex0"],
+        6: ["leftIndexPIP", "leftIndex1"],
+        7: ["leftIndexDIP", "leftIndex2"],
+        8: ["leftIndexTip", "leftIndex3"],
+        9: ["leftMiddleMCP", "leftMiddle0"],
+        10: ["leftMiddlePIP", "leftMiddle1"],
+        11: ["leftMiddleDIP", "leftMiddle2"],
+        12: ["leftMiddleTip", "leftMiddle3"],
+        13: ["leftRingMCP", "leftRing0"],
+        14: ["leftRingPIP", "leftRing1"],
+        15: ["leftRingDIP", "leftRing2"],
+        16: ["leftRingTip", "leftRing3"],
+        17: ["leftPinkyMCP", "leftPinky0", "leftLittle0"],
+        18: ["leftPinkyPIP", "leftPinky1", "leftLittle1"],
+        19: ["leftPinkyDIP", "leftPinky2", "leftLittle2"],
+        20: ["leftPinkyTip", "leftPinky3", "leftLittle3"],
+    },
+    "right_hand": {
+        0: ["rightWrist"],
+        1: ["rightThumbCMC", "rightThumb0", "rightThumb1"],
+        2: ["rightThumbMCP", "rightThumb2"],
+        3: ["rightThumbIP", "rightThumb3"],
+        4: ["rightThumbTip", "rightThumb4"],
+        5: ["rightIndexMCP", "rightIndex0"],
+        6: ["rightIndexPIP", "rightIndex1"],
+        7: ["rightIndexDIP", "rightIndex2"],
+        8: ["rightIndexTip", "rightIndex3"],
+        9: ["rightMiddleMCP", "rightMiddle0"],
+        10: ["rightMiddlePIP", "rightMiddle1"],
+        11: ["rightMiddleDIP", "rightMiddle2"],
+        12: ["rightMiddleTip", "rightMiddle3"],
+        13: ["rightRingMCP", "rightRing0"],
+        14: ["rightRingPIP", "rightRing1"],
+        15: ["rightRingDIP", "rightRing2"],
+        16: ["rightRingTip", "rightRing3"],
+        17: ["rightPinkyMCP", "rightPinky0", "rightLittle0"],
+        18: ["rightPinkyPIP", "rightPinky1", "rightLittle1"],
+        19: ["rightPinkyDIP", "rightPinky2", "rightLittle2"],
+        20: ["rightPinkyTip", "rightPinky3", "rightLittle3"],
+    },
+}
+
 DEFAULT_EXPORT = {
     "nose": ("body", "nose"),
     "leftShoulder": ("body", "leftShoulder"),
@@ -121,6 +170,11 @@ DEFAULT_EXPORT = {
 
 for face_name, index in FACE_INDICES.items():
     DEFAULT_EXPORT[face_name] = ("face", index)
+
+for hand_key, names_map in HAND_LANDMARK_NAMES.items():
+    for index, aliases in names_map.items():
+        for alias in aliases:
+            DEFAULT_EXPORT[alias] = ("hand", (hand_key, int(index)))
 
 FLOAT_PATTERN = re.compile(r"np\.float\d+\(([^)]+)\)")
 
@@ -185,6 +239,16 @@ def to_keypoints(frame: dict, names: list[str]) -> dict | None:
             else:
                 idx = int(ref)
             x, y, *_ = face[idx]
+        elif kind == "hand":
+            hand_key, index = ref
+            hand_points = frame.get(hand_key) or []
+            if not hand_points:
+                continue
+            if index >= len(hand_points):
+                raise ValueError(
+                    f"Expected at least {index + 1} hand points in '{hand_key}', got {len(hand_points)}"
+                )
+            x, y, *_ = hand_points[index]
         else:
             raise ValueError(f"Unsupported source kind '{kind}' for keypoint '{name}'")
 
