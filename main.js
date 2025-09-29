@@ -14,10 +14,35 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 const controls = new OrbitControls(camera, renderer.domElement);
+
+const handOverlayCanvas = document.createElement('canvas');
+handOverlayCanvas.style.position = 'fixed';
+handOverlayCanvas.style.left = '0';
+handOverlayCanvas.style.top = '0';
+handOverlayCanvas.style.width = '100vw';
+handOverlayCanvas.style.height = '100vh';
+handOverlayCanvas.style.pointerEvents = 'none';
+handOverlayCanvas.style.zIndex = '5';
+document.body.appendChild(handOverlayCanvas);
+const handOverlayCtx = handOverlayCanvas.getContext('2d');
+
+function resizeOverlay() {
+  const dpr = window.devicePixelRatio || 1;
+  const width = Math.round(window.innerWidth * dpr);
+  const height = Math.round(window.innerHeight * dpr);
+  if (handOverlayCanvas.width !== width || handOverlayCanvas.height !== height) {
+    handOverlayCanvas.width = width;
+    handOverlayCanvas.height = height;
+  }
+  handOverlayCtx && handOverlayCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+resizeOverlay();
+
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  resizeOverlay();
 });
 
 let mesh = null;
@@ -53,6 +78,14 @@ const HAND_KEYPOINTS_ORDER = [
   'Ring1','Ring2','Ring3','Ring4',
   'Pinky1','Pinky2','Pinky3','Pinky4'
 ];
+const HAND_CONNECTIONS = [
+  [0, 1], [1, 2], [2, 3], [3, 4],
+  [0, 5], [5, 6], [6, 7], [7, 8],
+  [0, 9], [9, 10], [10, 11], [11, 12],
+  [0, 13], [13, 14], [14, 15], [15, 16],
+  [0, 17], [17, 18], [18, 19], [19, 20],
+  [5, 9], [9, 13], [13, 17], [17, 5]
+];
 const FACE_KEYPOINTS_ORDER = Array.from({ length: 70 }, (_, i) => `Face_${i}`);
 
 // Subconjunto utilizado para animar o rig
@@ -76,6 +109,8 @@ const MAP = {
 
 let GLOBAL_SCALE = 1;
 let MOTION_GAIN = +gainInput.value || 20;
+const loggedHandSample = { left: false, right: false };
+let handsOverlayMissingLogged = false;
 
 gainInput.oninput = () => {
   MOTION_GAIN = Math.max(0.1, +gainInput.value);
@@ -100,7 +135,81 @@ function rotBone(bone, a, b) {
   console.debug('rotBone', bone.name, qLocal.x.toFixed(3), qLocal.y.toFixed(3), qLocal.z.toFixed(3));
 }
 
+function drawHandOverlay(side, handPoints, color, offsetX, offsetY, scale) {
+  if (!handPoints) return false;
+  let hasValidSegment = false;
+  const threshold = 0.05;
+  const mapPoint = (p) => {
+    if (!p) return null;
+    const [x, y, conf] = p;
+    if (conf !== undefined && conf < threshold) return null;
+    const px = offsetX + x * scale;
+    const py = offsetY + (1 - y) * scale;
+    return { x: px, y: py };
+  };
+  handOverlayCtx.strokeStyle = color;
+  handOverlayCtx.lineWidth = 2;
+  handOverlayCtx.lineCap = 'round';
+  HAND_CONNECTIONS.forEach(([ia, ib]) => {
+    const pa = mapPoint(handPoints[ia]);
+    const pb = mapPoint(handPoints[ib]);
+    if (!pa || !pb) return;
+    handOverlayCtx.beginPath();
+    handOverlayCtx.moveTo(pa.x, pa.y);
+    handOverlayCtx.lineTo(pb.x, pb.y);
+    handOverlayCtx.stroke();
+    hasValidSegment = true;
+  });
+  handOverlayCtx.fillStyle = color;
+  handPoints.forEach(p => {
+    const mapped = mapPoint(p);
+    if (!mapped) return;
+    handOverlayCtx.beginPath();
+    handOverlayCtx.arc(mapped.x, mapped.y, 3, 0, Math.PI * 2);
+    handOverlayCtx.fill();
+    hasValidSegment = true;
+  });
+  if (hasValidSegment && !loggedHandSample[side]) {
+    loggedHandSample[side] = true;
+    const wrist = handPoints[HAND_KEYPOINTS_ORDER.indexOf('Wrist')] || null;
+    console.debug(`Hand overlay ready for ${side}`, {
+      wrist,
+      visibleSegments: HAND_CONNECTIONS.length
+    });
+  }
+  return hasValidSegment;
+}
+
+function updateHandsOverlay(frameData) {
+  if (!handOverlayCtx) return;
+  handOverlayCtx.save();
+  handOverlayCtx.setTransform(1, 0, 0, 1, 0, 0);
+  handOverlayCtx.clearRect(0, 0, handOverlayCanvas.width, handOverlayCanvas.height);
+  handOverlayCtx.restore();
+  if (!frameData) return;
+  const margin = 20;
+  const scale = Math.min(window.innerWidth, window.innerHeight) * 0.35;
+  const leftDrawn = drawHandOverlay('left', frameData.left_hand, 'rgba(64,200,255,0.9)', margin, margin, scale);
+  const rightDrawn = drawHandOverlay(
+    'right',
+    frameData.right_hand,
+    'rgba(255,140,64,0.9)',
+    window.innerWidth - margin - scale,
+    margin,
+    scale
+  );
+  if (!leftDrawn && !rightDrawn) {
+    if (!handsOverlayMissingLogged) {
+      handsOverlayMissingLogged = true;
+      console.debug('Hands overlay: no hand keypoints available for current frame');
+    }
+    return;
+  }
+  handsOverlayMissingLogged = false;
+}
+
 function applyFrame(f) {
+  updateHandsOverlay(f);
   if (!skeleton) return;
   // sempre recomeça da pose de descanso para evitar acumular rotações
   skeleton.bones.forEach(b => b.quaternion.copy(b.userData.restQuat));
@@ -261,6 +370,10 @@ function loadPoseFromText(text) {
   frames = parsePose(text);
   normalizeFrames(frames);
   frame = 0;
+  loggedHandSample.left = false;
+  loggedHandSample.right = false;
+  handsOverlayMissingLogged = false;
+  updateHandsOverlay(frames[0] || null);
   console.log('Frames:', frames.length);
   if (frames.length) {
     const sample = frames[0].body[BODY.indexOf('RWrist')];
