@@ -390,6 +390,8 @@
     const FACE_OVERLAY_ID = 'faceSynth';
     const LEGACY_FACE_OVERLAY_ID = 'face_overlay_layer';
     const FACE_OVERLAY_SUBGROUP_IDS = {
+      mouth: 'fs-mouth',
+      nose: 'fs-nose',
       eyes: 'fs-eyes',
       brows: 'fs-brows'
     };
@@ -2008,6 +2010,8 @@
     }
 
     function ensureFaceOverlayGroups() {
+      ensureFaceOverlayGroup(FACE_OVERLAY_SUBGROUP_IDS.mouth);
+      ensureFaceOverlayGroup(FACE_OVERLAY_SUBGROUP_IDS.nose);
       ensureFaceOverlayGroup(FACE_OVERLAY_SUBGROUP_IDS.eyes);
       ensureFaceOverlayGroup(FACE_OVERLAY_SUBGROUP_IDS.brows);
     }
@@ -2382,39 +2386,208 @@
       const group = template && template.tagName?.toLowerCase() === 'g'
         ? template
         : document.createElementNS(NS, 'g');
+      const templatePath = template ? template.querySelector('path') : null;
       group.innerHTML = '';
-      appendToFaceOverlay(group);
+      appendToFaceOverlay(group, FACE_OVERLAY_SUBGROUP_IDS.nose);
       if (options.id) group.id = options.id;
 
       const bridge = document.createElementNS(NS, 'path');
-      applyTemplateStyles(template, bridge, ['stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin'], {
+      applyTemplateStyles(templatePath, bridge, ['stroke', 'stroke-width'], {
         stroke: options.stroke || '#2C323A',
-        'stroke-width': options.bridgeWidth ?? 3,
-        'stroke-linecap': 'round',
-        'stroke-linejoin': 'round'
+        'stroke-width': options.bridgeWidth ?? 2.6
       });
       bridge.setAttribute('fill', 'none');
+      bridge.setAttribute('stroke-linecap', 'round');
+      bridge.setAttribute('stroke-linejoin', 'round');
       bridge.style.display = 'none';
       group.appendChild(bridge);
 
-      const base = document.createElementNS(NS, 'path');
-      applyTemplateStyles(template, base, ['stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin'], {
+      const tip = document.createElementNS(NS, 'path');
+      applyTemplateStyles(templatePath, tip, ['stroke', 'stroke-width'], {
         stroke: options.stroke || '#2C323A',
-        'stroke-width': options.baseWidth ?? 3.8,
-        'stroke-linecap': 'round',
-        'stroke-linejoin': 'round'
+        'stroke-width': options.tipStrokeWidth ?? 2.8
       });
-      base.setAttribute('fill', 'none');
-      base.style.display = 'none';
-      group.appendChild(base);
+      tip.setAttribute('fill', 'none');
+      tip.setAttribute('stroke-linecap', 'round');
+      tip.setAttribute('stroke-linejoin', 'round');
+      tip.style.display = 'none';
+      group.appendChild(tip);
+
+      const nostrilLeft = document.createElementNS(NS, 'path');
+      const nostrilRight = document.createElementNS(NS, 'path');
+      [nostrilLeft, nostrilRight].forEach((nostril) => {
+        applyTemplateStyles(templatePath, nostril, ['stroke', 'stroke-width'], {
+          stroke: options.stroke || '#2C323A',
+          'stroke-width': options.nostrilStrokeWidth ?? 2.2
+        });
+        nostril.setAttribute('fill', 'none');
+        nostril.setAttribute('stroke-linecap', 'round');
+        nostril.setAttribute('stroke-linejoin', 'round');
+        nostril.style.display = 'none';
+        group.appendChild(nostril);
+      });
 
       const initialPart = options.part || 'default';
       const state = {
-        base: {}
+        base: {},
+        parts: {
+          bridge: null,
+          base: null
+        },
+        center: null,
+        rotation: null,
+        bridgeHeight: null,
+        width: null,
+        tipWidth: null,
+        tipHeight: null,
+        nostrilGap: null,
+        nostrilWidth: null,
+        baseWidth: null,
+        baseBridge: null
       };
       if (Array.isArray(options.fallback)) {
         state.base[initialPart] = options.fallback.map((pt) => ({ x: pt.x, y: pt.y }));
       }
+
+      const refresh = () => {
+        const bridgeData = state.parts.bridge;
+        const baseData = state.parts.base;
+        const bridgePoints = bridgeData?.points || null;
+        const basePoints = baseData?.points || null;
+
+        let rawCenter = null;
+        if (basePoints && basePoints.length >= 3 && basePoints[2]) {
+          rawCenter = basePoints[2];
+        } else if (bridgePoints && bridgePoints.length) {
+          rawCenter = bridgePoints[bridgePoints.length - 1];
+        }
+
+        let axisLen = null;
+        if (bridgePoints && bridgePoints.length >= 2) {
+          const tipPt = bridgePoints[bridgePoints.length - 1];
+          const topCandidates = bridgePoints.slice(0, -1).filter(Boolean);
+          const topPt = topCandidates.length ? centroid(topCandidates) : bridgePoints[0];
+          if (tipPt && topPt) {
+            const axisVec = { x: tipPt.x - topPt.x, y: tipPt.y - topPt.y };
+            const length = Math.hypot(axisVec.x, axisVec.y);
+            if (Number.isFinite(length) && length > 1e-3) {
+              axisLen = length;
+              if (state.baseBridge == null) state.baseBridge = length;
+              const rawRotation = Math.atan2(axisVec.y, axisVec.x) - Math.PI / 2;
+              state.rotation = smoothAngle(state.rotation, rawRotation, 0.32);
+              const minBridge = (state.baseBridge ?? length) * 0.65;
+              const maxBridge = (state.baseBridge ?? length) * 1.35;
+              const bridgeTarget = clamp(length, minBridge, maxBridge);
+              state.bridgeHeight = smoothScalar(state.bridgeHeight, bridgeTarget, 0.32);
+            }
+          }
+        }
+
+        if (rawCenter) {
+          state.center = state.center ? EMA(state.center, rawCenter, 0.35) : rawCenter;
+        }
+
+        if (basePoints && basePoints.length >= 5) {
+          const rightOuter = basePoints[0];
+          const rightInner = basePoints[1];
+          const leftInner = basePoints[3];
+          const leftOuter = basePoints[4];
+          const rawWidth = dist(rightOuter, leftOuter);
+          if (Number.isFinite(rawWidth) && rawWidth > 1e-3) {
+            if (state.baseWidth == null) state.baseWidth = rawWidth;
+            const minWidth = (state.baseWidth ?? rawWidth) * 0.8;
+            const maxWidth = (state.baseWidth ?? rawWidth) * 1.3;
+            const widthTarget = clamp(rawWidth, minWidth, maxWidth);
+            state.width = smoothScalar(state.width, widthTarget, 0.28);
+            const nostrilSpanRaw = dist(rightInner, leftInner);
+            const nostrilSpan = clamp(nostrilSpanRaw, widthTarget * 0.3, widthTarget * 0.75);
+            state.nostrilGap = smoothScalar(state.nostrilGap, nostrilSpan, 0.3);
+            const nostrilWidthRaw = (dist(rightOuter, rightInner) + dist(leftOuter, leftInner)) / 2;
+            const nostrilWidthTarget = clamp(nostrilWidthRaw, widthTarget * 0.12, widthTarget * 0.28);
+            state.nostrilWidth = smoothScalar(state.nostrilWidth, nostrilWidthTarget, 0.3);
+            const tipSpan = clamp(widthTarget * 0.55, widthTarget * 0.38, widthTarget * 0.7);
+            state.tipWidth = smoothScalar(state.tipWidth, tipSpan, 0.28);
+            const referenceBridge = state.bridgeHeight ?? axisLen ?? state.baseBridge ?? widthTarget * 1.1;
+            const tipHeightTarget = clamp(referenceBridge * 0.28, 4, widthTarget * 0.7);
+            state.tipHeight = smoothScalar(state.tipHeight, tipHeightTarget, 0.3);
+          }
+        }
+
+        const center = state.center || rawCenter;
+        let rotation = state.rotation ?? 0;
+        if (!center || !Number.isFinite(rotation)) {
+          group.style.display = 'none';
+          return;
+        }
+
+        const widthVal = state.width ?? state.baseWidth ?? 14;
+        const halfWidth = widthVal / 2;
+        const tipWidth = clamp(state.tipWidth ?? widthVal * 0.5, widthVal * 0.3, widthVal * 0.72);
+        const tipHeight = clamp(state.tipHeight ?? (state.bridgeHeight || widthVal) * 0.26, widthVal * 0.12, widthVal * 0.78);
+        const bridgeHeight = clamp(state.bridgeHeight ?? (axisLen || widthVal) * 0.9, tipHeight * 1.3, (state.baseBridge ?? widthVal * 1.4) * 1.4);
+        const nostrilGap = clamp(state.nostrilGap ?? widthVal * 0.42, widthVal * 0.24, widthVal * 0.78);
+        const nostrilHalf = nostrilGap / 2;
+        const nostrilWidth = clamp(state.nostrilWidth ?? widthVal * 0.18, widthVal * 0.1, widthVal * 0.32);
+        const nostrilRise = Math.max(nostrilWidth * 0.65, tipHeight * 0.4);
+
+        group.setAttribute(
+          'transform',
+          `translate(${formatFloat(center.x)} ${formatFloat(center.y)}) rotate(${formatFloat((rotation * 180) / Math.PI)})`
+        );
+
+        let anyVisible = false;
+        if (bridgePoints && bridgeHeight > 0.6) {
+          const blend = Math.min(tipHeight * 0.7, bridgeHeight * 0.45);
+          const sway = tipWidth * 0.08;
+          const bridgePath = [
+            `M ${formatFloat(-sway)} ${formatFloat(-bridgeHeight)}`,
+            `Q 0 ${formatFloat(-bridgeHeight + blend * 0.35)} 0 ${formatFloat(-blend)}`,
+            `Q 0 ${formatFloat(-blend * 0.35)} 0 ${formatFloat(-Math.max(blend * 0.12, 0.4))}`
+          ].join(' ');
+          bridge.setAttribute('d', bridgePath);
+          bridge.style.display = '';
+          anyVisible = true;
+        } else {
+          bridge.style.display = 'none';
+        }
+
+        if (basePoints && tipWidth > 0.6 && tipHeight > 0.6) {
+          const halfTip = tipWidth / 2;
+          const tipPath = [
+            `M ${formatFloat(-halfTip)} 0`,
+            `Q ${formatFloat(-halfTip * 0.4)} ${formatFloat(tipHeight * 0.28)} 0 ${formatFloat(tipHeight)}`,
+            `Q ${formatFloat(halfTip * 0.4)} ${formatFloat(tipHeight * 0.28)} ${formatFloat(halfTip)} 0`
+          ].join(' ');
+          tip.setAttribute('d', tipPath);
+          tip.style.display = '';
+          anyVisible = true;
+        } else {
+          tip.style.display = 'none';
+        }
+
+        if (basePoints && nostrilHalf > 0.3 && nostrilWidth > 0.3) {
+          const nostrilY = tipHeight * 0.55;
+          const buildNostril = (dir) => {
+            const cx = dir * nostrilHalf;
+            const startX = cx - nostrilWidth / 2;
+            const endX = cx + nostrilWidth / 2;
+            return [
+              `M ${formatFloat(startX)} ${formatFloat(nostrilY)}`,
+              `Q ${formatFloat(cx)} ${formatFloat(nostrilY + nostrilRise)} ${formatFloat(endX)} ${formatFloat(nostrilY)}`
+            ].join(' ');
+          };
+          nostrilLeft.setAttribute('d', buildNostril(-1));
+          nostrilRight.setAttribute('d', buildNostril(1));
+          nostrilLeft.style.display = '';
+          nostrilRight.style.display = '';
+          anyVisible = true;
+        } else {
+          nostrilLeft.style.display = 'none';
+          nostrilRight.style.display = 'none';
+        }
+
+        group.style.display = anyVisible ? '' : 'none';
+      };
 
       return {
         el: group,
@@ -2424,45 +2597,63 @@
             state.base[key] = points.map((pt) => ({ x: pt.x, y: pt.y }));
           }
         },
-        update({ points, part, inverseMatrix, visible = true }) {
-          const key = part || options.part || 'default';
+        update({ points, part, inverseMatrix, visible = true, ids = [] }) {
+          const mode = part || options.part || 'default';
+          const assignPart = (value) => {
+            state.parts[mode === 'base' ? 'base' : 'bridge'] = value;
+          };
+
           if (!visible) {
-            if (part === 'base') {
-              base.style.display = 'none';
+            assignPart(null);
+            if (mode === 'base') {
+              tip.style.display = 'none';
+              nostrilLeft.style.display = 'none';
+              nostrilRight.style.display = 'none';
             } else {
               bridge.style.display = 'none';
             }
-            return;
-          }
-          const ptsGlobal = Array.isArray(points) && points.length >= 2 ? points : state.base[key];
-          if (!ptsGlobal || ptsGlobal.length < 2) {
-            if (part === 'base') {
-              base.style.display = 'none';
+            if (!state.parts.base && !state.parts.bridge) {
+              group.style.display = 'none';
             } else {
-              bridge.style.display = 'none';
+              refresh();
             }
             return;
           }
-          const local = inverseMatrix ? mapPoints(ptsGlobal, inverseMatrix) : ptsGlobal;
-          const pts = Array.isArray(local) && local.length >= 2 ? local : state.base[key];
-          if (!pts || pts.length < 2) {
-            if (part === 'base') {
-              base.style.display = 'none';
+
+          const sourcePoints = Array.isArray(points) && points.length ? points : state.base[mode];
+          if (!Array.isArray(sourcePoints) || !sourcePoints.length) {
+            assignPart(null);
+            if (mode === 'base') {
+              tip.style.display = 'none';
+              nostrilLeft.style.display = 'none';
+              nostrilRight.style.display = 'none';
             } else {
               bridge.style.display = 'none';
             }
+            if (!state.parts.base && !state.parts.bridge) group.style.display = 'none';
             return;
           }
-          // Apply the template's stroke to a freshly generated curve that follows the live guide points in head space.
-          const tension = part === 'base' ? options.baseTension ?? 0.55 : options.bridgeTension ?? 0.35;
-          const data = buildSmoothPath(pts, { closed: false, tension });
-          if (part === 'base') {
-            base.setAttribute('d', data);
-            base.style.display = 'block';
-          } else {
-            bridge.setAttribute('d', data);
-            bridge.style.display = 'block';
+
+          const mapped = inverseMatrix ? mapPoints(sourcePoints, inverseMatrix) : sourcePoints;
+          if (!Array.isArray(mapped) || !mapped.length) {
+            assignPart(null);
+            if (mode === 'base') {
+              tip.style.display = 'none';
+              nostrilLeft.style.display = 'none';
+              nostrilRight.style.display = 'none';
+            } else {
+              bridge.style.display = 'none';
+            }
+            if (!state.parts.base && !state.parts.bridge) group.style.display = 'none';
+            return;
           }
+
+          const processed = mapped.map((pt) => ({ x: pt.x, y: pt.y }));
+          assignPart({
+            points: processed,
+            ids: Array.isArray(ids) ? ids.slice() : []
+          });
+          refresh();
         }
       };
     }
@@ -2474,34 +2665,206 @@
         : document.createElementNS(NS, 'g');
       const templatePath = template ? template.querySelector('path') : null;
       group.innerHTML = '';
-      appendToFaceOverlay(group);
+      appendToFaceOverlay(group, FACE_OVERLAY_SUBGROUP_IDS.mouth);
       if (options.id) group.id = options.id;
 
       const outer = document.createElementNS(NS, 'path');
-      applyTemplateStyles(templatePath, outer, ['fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin'], {
-        fill: options.outerFill || '#DF7977',
-        stroke: options.outerStroke || '#B45656',
-        'stroke-width': options.outerStrokeWidth ?? 4,
-        'stroke-linecap': 'round',
-        'stroke-linejoin': 'round'
+      applyTemplateStyles(templatePath, outer, ['fill', 'stroke', 'stroke-width'], {
+        fill: options.outerFill || '#F1B1AC',
+        stroke: options.outerStroke || '#C97877',
+        'stroke-width': options.outerStrokeWidth ?? 2.6
       });
+      outer.setAttribute('stroke-linecap', 'round');
+      outer.setAttribute('stroke-linejoin', 'round');
       group.appendChild(outer);
 
       const inner = document.createElementNS(NS, 'path');
-      inner.setAttribute('fill', options.innerFill || '#B24848');
+      inner.setAttribute('fill', options.innerFill || '#8F4A49');
       inner.setAttribute('stroke', 'none');
-      inner.style.opacity = options.innerOpacity ?? 0.85;
+      inner.style.opacity = options.innerOpacity ?? 0.82;
       inner.style.display = 'none';
       group.appendChild(inner);
 
-      const baseStroke = parseFloat(outer.getAttribute('stroke-width')) || (options.outerStrokeWidth ?? 4);
       const initialPart = options.part || 'default';
       const state = {
-        base: {}
+        base: {},
+        parts: {
+          outer: null,
+          inner: null
+        },
+        center: null,
+        rotation: null,
+        width: null,
+        upperHeight: null,
+        lowerHeight: null,
+        opening: null,
+        innerWidth: null,
+        baseWidth: null,
+        baseUpper: null,
+        baseLower: null,
+        baseGap: null
       };
       if (Array.isArray(options.fallback)) {
         state.base[initialPart] = options.fallback.map((pt) => ({ x: pt.x, y: pt.y }));
       }
+
+      const refresh = () => {
+        const outerData = state.parts.outer;
+        const innerData = state.parts.inner;
+        const outerPoints = outerData?.points || null;
+        const outerIds = outerData?.ids || [];
+        if (!outerPoints || outerPoints.length < 4) {
+          group.style.display = 'none';
+          inner.style.display = 'none';
+          return;
+        }
+
+        const named = {};
+        outerIds.forEach((id, idx) => {
+          named[id] = outerPoints[idx];
+        });
+
+        const rightCorner = named.rightMouthCorner || outerPoints[0];
+        const leftCorner = named.leftMouthCorner || outerPoints.find((pt, idx) => outerIds[idx] === 'leftMouthCorner') || outerPoints[outerPoints.length - 1];
+        if (!rightCorner || !leftCorner) {
+          group.style.display = 'none';
+          inner.style.display = 'none';
+          return;
+        }
+
+        const widthVec = { x: leftCorner.x - rightCorner.x, y: leftCorner.y - rightCorner.y };
+        const rawWidth = Math.hypot(widthVec.x, widthVec.y);
+        if (!Number.isFinite(rawWidth) || rawWidth < 1e-3) {
+          group.style.display = 'none';
+          inner.style.display = 'none';
+          return;
+        }
+
+        const widthUnit = { x: widthVec.x / rawWidth, y: widthVec.y / rawWidth };
+        const perpUnit = { x: -widthUnit.y, y: widthUnit.x };
+        const mid = {
+          x: (leftCorner.x + rightCorner.x) / 2,
+          y: (leftCorner.y + rightCorner.y) / 2
+        };
+        state.center = state.center ? EMA(state.center, mid, 0.4) : mid;
+        if (state.baseWidth == null) state.baseWidth = rawWidth;
+        const minWidth = (state.baseWidth ?? rawWidth) * 0.75;
+        const maxWidth = (state.baseWidth ?? rawWidth) * 1.35;
+        const widthTarget = clamp(rawWidth, minWidth, maxWidth);
+        state.width = smoothScalar(state.width, widthTarget, 0.3);
+        const rotationRaw = Math.atan2(widthUnit.y, widthUnit.x);
+        state.rotation = smoothAngle(state.rotation, rotationRaw, 0.28);
+
+        const center = state.center || mid;
+        const project = (pt) => {
+          const dx = pt.x - center.x;
+          const dy = pt.y - center.y;
+          return {
+            x: dx * widthUnit.x + dy * widthUnit.y,
+            y: dx * perpUnit.x + dy * perpUnit.y
+          };
+        };
+
+        const upperOuter = named.upperLipTopMid ? project(named.upperLipTopMid) : null;
+        const lowerOuter = named.lowerLipBottomMid ? project(named.lowerLipBottomMid) : null;
+        if (upperOuter) {
+          const upperTarget = clamp(-upperOuter.y, widthTarget * 0.08, widthTarget * 0.35);
+          state.upperHeight = smoothScalar(state.upperHeight, upperTarget, 0.32);
+          if (state.baseUpper == null) state.baseUpper = upperTarget;
+        } else if (state.baseUpper != null) {
+          state.upperHeight = smoothScalar(state.upperHeight, state.baseUpper, 0.2);
+        }
+        if (lowerOuter) {
+          const lowerTarget = clamp(lowerOuter.y, widthTarget * 0.1, widthTarget * 0.42);
+          state.lowerHeight = smoothScalar(state.lowerHeight, lowerTarget, 0.32);
+          if (state.baseLower == null) state.baseLower = lowerTarget;
+        } else if (state.baseLower != null) {
+          state.lowerHeight = smoothScalar(state.lowerHeight, state.baseLower, 0.2);
+        }
+
+        let gapTarget = null;
+        let innerWidthTarget = null;
+        if (innerData?.points?.length) {
+          const innerNamed = {};
+          innerData.ids.forEach((id, idx) => {
+            innerNamed[id] = innerData.points[idx];
+          });
+          const upperInner = innerNamed.upperLipBottomMid ? project(innerNamed.upperLipBottomMid) : null;
+          const lowerInner = innerNamed.lowerLipTopMid ? project(innerNamed.lowerLipTopMid) : null;
+          if (upperInner && lowerInner) {
+            const rawGap = Math.max(lowerInner.y - upperInner.y, 0);
+            if (state.baseGap == null) state.baseGap = rawGap;
+            const minGap = Math.max((state.baseGap ?? rawGap) * 0.25, widthTarget * 0.02);
+            const maxGap = Math.max((state.baseGap ?? rawGap) * 2.2, widthTarget * 0.55);
+            gapTarget = clamp(rawGap, minGap, maxGap);
+          }
+          const innerLeft = innerNamed.leftMouthCorner ? project(innerNamed.leftMouthCorner) : null;
+          const innerRight = innerNamed.rightMouthCorner ? project(innerNamed.rightMouthCorner) : null;
+          if (innerLeft && innerRight) {
+            const rawInnerWidth = Math.abs(innerRight.x - innerLeft.x);
+            innerWidthTarget = clamp(rawInnerWidth, widthTarget * 0.5, widthTarget * 0.9);
+          }
+        }
+
+        if (gapTarget == null) {
+          const baseGap = state.baseGap ?? (state.baseLower ?? widthTarget * 0.22) * 0.4;
+          gapTarget = clamp(baseGap, widthTarget * 0.015, widthTarget * 0.45);
+        }
+        state.opening = smoothScalar(state.opening, gapTarget, 0.3);
+        if (innerWidthTarget != null) {
+          state.innerWidth = smoothScalar(state.innerWidth, innerWidthTarget, 0.3);
+        } else if (state.innerWidth == null) {
+          state.innerWidth = widthTarget * 0.68;
+        }
+
+        const rotation = state.rotation ?? rotationRaw;
+        if (!center || !Number.isFinite(rotation)) {
+          group.style.display = 'none';
+          inner.style.display = 'none';
+          return;
+        }
+
+        const widthVal = state.width ?? widthTarget;
+        const halfWidth = widthVal / 2;
+        const upperHeight = clamp(state.upperHeight ?? (state.baseUpper ?? widthVal * 0.2), widthVal * 0.08, widthVal * 0.36);
+        const lowerHeight = clamp(state.lowerHeight ?? (state.baseLower ?? widthVal * 0.24), widthVal * 0.1, widthVal * 0.45);
+        const cupidWidth = clamp(widthVal * 0.42, widthVal * 0.3, widthVal * 0.58);
+        const opening = Math.max(state.opening ?? 0, 0);
+        const innerHalf = opening / 2;
+        const innerSpan = clamp(state.innerWidth ?? widthVal * 0.68, widthVal * 0.4, widthVal * 0.92);
+
+        group.setAttribute(
+          'transform',
+          `translate(${formatFloat(center.x)} ${formatFloat(center.y)}) rotate(${formatFloat((rotation * 180) / Math.PI)})`
+        );
+        group.style.display = '';
+
+        const outerPath = [
+          `M ${formatFloat(-halfWidth)} 0`,
+          `C ${formatFloat(-halfWidth * 0.55)} ${formatFloat(-upperHeight * 0.15)} ${formatFloat(-cupidWidth)} ${formatFloat(-upperHeight)} 0 ${formatFloat(-upperHeight)}`,
+          `C ${formatFloat(cupidWidth)} ${formatFloat(-upperHeight)} ${formatFloat(halfWidth * 0.55)} ${formatFloat(-upperHeight * 0.15)} ${formatFloat(halfWidth)} 0`,
+          `C ${formatFloat(halfWidth * 0.55)} ${formatFloat(lowerHeight * 0.22)} ${formatFloat(cupidWidth)} ${formatFloat(lowerHeight)} 0 ${formatFloat(lowerHeight)}`,
+          `C ${formatFloat(-cupidWidth)} ${formatFloat(lowerHeight)} ${formatFloat(-halfWidth * 0.55)} ${formatFloat(lowerHeight * 0.22)} ${formatFloat(-halfWidth)} 0`,
+          'Z'
+        ].join(' ');
+        outer.setAttribute('d', outerPath);
+
+        if (opening > widthVal * 0.02) {
+          const innerHalfWidth = Math.max(innerSpan / 2, halfWidth * 0.42);
+          const cappedHalf = Math.max(innerHalf, widthVal * 0.012);
+          const innerPath = [
+            `M ${formatFloat(-innerHalfWidth)} ${formatFloat(-cappedHalf)}`,
+            `Q 0 ${formatFloat(-cappedHalf * 0.45)} ${formatFloat(innerHalfWidth)} ${formatFloat(-cappedHalf)}`,
+            `Q ${formatFloat(innerHalfWidth * 0.7)} ${formatFloat(cappedHalf)} ${formatFloat(innerHalfWidth)} ${formatFloat(cappedHalf)}`,
+            `Q 0 ${formatFloat(cappedHalf * 0.45)} ${formatFloat(-innerHalfWidth)} ${formatFloat(cappedHalf)}`,
+            'Z'
+          ].join(' ');
+          inner.setAttribute('d', innerPath);
+          inner.style.display = '';
+        } else {
+          inner.style.display = 'none';
+        }
+      };
 
       return {
         el: group,
@@ -2511,50 +2874,51 @@
             state.base[key] = points.map((pt) => ({ x: pt.x, y: pt.y }));
           }
         },
-        update({ points, part, inverseMatrix, visible = true }) {
-          const key = part || options.part || 'default';
+        update({ points, part, inverseMatrix, visible = true, ids = [] }) {
           const mode = (part || options.part) === 'inner' ? 'inner' : 'outer';
-          const hidePart = () => {
+          const assignPart = (value) => {
+            state.parts[mode] = value;
+          };
+
+          if (!visible) {
+            assignPart(null);
             if (mode === 'inner') {
               inner.style.display = 'none';
             } else {
-              outer.style.display = 'none';
+              group.style.display = 'none';
             }
-          };
-          if (!visible) {
-            hidePart();
+            refresh();
             return;
           }
-          const ptsRaw = Array.isArray(points) && points.length ? points : state.base[key];
-          if (!Array.isArray(ptsRaw) || !ptsRaw.length) {
-            hidePart();
+
+          const source = Array.isArray(points) && points.length ? points : state.base[mode];
+          if (!Array.isArray(source) || !source.length) {
+            assignPart(null);
+            if (mode === 'inner') {
+              inner.style.display = 'none';
+            } else {
+              group.style.display = 'none';
+            }
             return;
           }
-          const localRaw = inverseMatrix ? mapPoints(ptsRaw, inverseMatrix) : ptsRaw;
-          const working = Array.isArray(localRaw) && localRaw.length ? localRaw : state.base[key];
-          const pts = normalizeLoopPoints(working || []);
-          if (!Array.isArray(pts) || pts.length < 3) {
-            hidePart();
+
+          const mapped = inverseMatrix ? mapPoints(source, inverseMatrix) : source;
+          if (!Array.isArray(mapped) || !mapped.length) {
+            assignPart(null);
+            if (mode === 'inner') {
+              inner.style.display = 'none';
+            } else {
+              group.style.display = 'none';
+            }
             return;
           }
-          // Use the template colours on a path rebuilt from the pose data in head-local coordinates.
-          const tension = mode === 'outer' ? options.outerTension ?? 0.6 : options.innerTension ?? 0.58;
-          const data = buildSmoothPath(pts, { closed: true, tension });
-          if (mode === 'outer') {
-            outer.setAttribute('d', data);
-            outer.style.display = 'block';
-            const half = Math.floor(pts.length / 2);
-            const upperMid = centroid(pts.slice(0, half));
-            const lowerMid = centroid(pts.slice(half));
-            const openness = dist(upperMid, lowerMid);
-            const width = Math.max(dist(pts[0], pts[half]), 1);
-            const strokeWidth = clamp((openness / Math.max(width, 1)) * baseStroke + 2, 3, 6);
-            outer.setAttribute('stroke-width', formatFloat(strokeWidth));
-          } else {
-            inner.setAttribute('d', data);
-            const area = polygonArea(pts);
-            inner.style.display = area > (options.innerAreaThreshold ?? 8) ? 'block' : 'none';
-          }
+
+          const processed = mapped.map((pt) => ({ x: pt.x, y: pt.y }));
+          assignPart({
+            points: processed,
+            ids: Array.isArray(ids) ? ids.slice() : []
+          });
+          refresh();
         }
       };
     }
