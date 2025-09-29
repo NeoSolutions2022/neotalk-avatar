@@ -323,6 +323,51 @@
       return path;
     }
 
+    function parseHexColor(hex) {
+      if (typeof hex !== 'string') return null;
+      const match = hex.trim().match(/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i);
+      if (!match) return null;
+      let value = match[1];
+      if (value.length === 3) {
+        value = value.split('').map((ch) => ch + ch).join('');
+      }
+      const int = Number.parseInt(value, 16);
+      if (!Number.isFinite(int)) return null;
+      return {
+        r: (int >> 16) & 255,
+        g: (int >> 8) & 255,
+        b: int & 255
+      };
+    }
+
+    function rgbToHex({ r, g, b } = {}) {
+      if (!Number.isFinite(r) || !Number.isFinite(g) || !Number.isFinite(b)) return null;
+      const toHex = (component) => {
+        const clamped = clamp(Math.round(component), 0, 255);
+        return clamped.toString(16).padStart(2, '0');
+      };
+      return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+    }
+
+    function mixRgb(a, b, t = 0.5) {
+      if (!a || !b) return a || b;
+      const ratio = clamp(Number.isFinite(t) ? t : 0.5, 0, 1);
+      return {
+        r: a.r + (b.r - a.r) * ratio,
+        g: a.g + (b.g - a.g) * ratio,
+        b: a.b + (b.b - a.b) * ratio
+      };
+    }
+
+    function mixHex(colorA, colorB, t = 0.5) {
+      const a = parseHexColor(colorA);
+      const b = parseHexColor(colorB);
+      if (!a || !b) return colorA;
+      const mixed = mixRgb(a, b, t);
+      const hex = rgbToHex(mixed);
+      return hex || colorA;
+    }
+
     const PUPPET_LEFT_SH = { x: 605.7, y: 294.3 };
     const PUPPET_RIGHT_SH = { x: 392.8, y: 294.3 };
     const PUPPET_LEFT_EL = { x: 710.1, y: 294.0 };
@@ -390,6 +435,7 @@
     const FACE_OVERLAY_ID = 'faceSynth';
     const LEGACY_FACE_OVERLAY_ID = 'face_overlay_layer';
     const FACE_OVERLAY_SUBGROUP_IDS = {
+      skin: 'fs-skin',
       mouth: 'fs-mouth',
       nose: 'fs-nose',
       eyes: 'fs-eyes',
@@ -2010,6 +2056,7 @@
     }
 
     function ensureFaceOverlayGroups() {
+      ensureFaceOverlayGroup(FACE_OVERLAY_SUBGROUP_IDS.skin);
       ensureFaceOverlayGroup(FACE_OVERLAY_SUBGROUP_IDS.mouth);
       ensureFaceOverlayGroup(FACE_OVERLAY_SUBGROUP_IDS.nose);
       ensureFaceOverlayGroup(FACE_OVERLAY_SUBGROUP_IDS.eyes);
@@ -2377,6 +2424,246 @@
           pupil.style.display = showInner ? 'block' : 'none';
           highlight.style.display = openness > 0.18 && highlightRadius > 0.6 ? 'block' : 'none';
           group.style.display = '';
+        }
+      };
+    }
+
+    function createSkinHandler(options = {}) {
+      const group = document.createElementNS(NS, 'g');
+      group.style.display = 'none';
+      appendToFaceOverlay(group, FACE_OVERLAY_SUBGROUP_IDS.skin);
+      if (options.id) group.id = options.id;
+
+      const baseColor = options.baseColor || '#F3AF9D';
+      const jawStrokeColor = options.jawStroke || mixHex(baseColor, '#D98E7E', 0.25);
+      const blushWarm = options.blushTarget || '#FFBFAF';
+      const blushHighlight = options.blushHighlight || '#FFE8DE';
+      const blushFill = options.blushFill || mixHex(mixHex(baseColor, blushWarm, 0.18), blushHighlight, 0.4);
+      const part = options.part || 'jaw';
+
+      let element = null;
+      if (part === 'jaw') {
+        element = document.createElementNS(NS, 'path');
+        element.setAttribute('fill', 'none');
+        element.setAttribute('stroke', jawStrokeColor);
+        element.setAttribute('stroke-width', options.strokeWidth ?? 6.2);
+        element.setAttribute('stroke-linecap', 'round');
+        element.setAttribute('stroke-linejoin', 'round');
+        element.setAttribute('opacity', options.opacity ?? 0.85);
+        element.style.pointerEvents = 'none';
+        group.appendChild(element);
+      } else if (part === 'cheek') {
+        element = document.createElementNS(NS, 'ellipse');
+        element.setAttribute('fill', blushFill);
+        element.setAttribute('stroke', 'none');
+        element.setAttribute('opacity', options.opacity ?? 0.32);
+        element.style.pointerEvents = 'none';
+        group.appendChild(element);
+      } else {
+        element = document.createElementNS(NS, 'g');
+        element.style.pointerEvents = 'none';
+        group.appendChild(element);
+      }
+
+      const state = {
+        base: Array.isArray(options.fallback)
+          ? options.fallback.map((pt) => ({ x: pt.x, y: pt.y }))
+          : null,
+        smooth: null,
+        bounds: null,
+        center: null,
+        rx: null,
+        ry: null,
+        angle: null,
+        baseEyeMouth: null
+      };
+
+      const ensureBounds = (contourPoints) => {
+        if (Array.isArray(contourPoints) && contourPoints.length) {
+          let minX = Number.POSITIVE_INFINITY;
+          let minY = Number.POSITIVE_INFINITY;
+          let maxX = Number.NEGATIVE_INFINITY;
+          let maxY = Number.NEGATIVE_INFINITY;
+          for (const pt of contourPoints) {
+            if (!pt) continue;
+            const { x, y } = pt;
+            if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+            if (x < minX) minX = x;
+            if (y < minY) minY = y;
+            if (x > maxX) maxX = x;
+            if (y > maxY) maxY = y;
+          }
+          if (minX <= maxX && minY <= maxY) {
+            state.bounds = { minX, minY, maxX, maxY };
+          }
+        }
+        return state.bounds;
+      };
+
+      const clampPointToBounds = (pt, bounds, inset = 0) => {
+        if (!bounds || !pt) return pt;
+        return {
+          x: clamp(pt.x, bounds.minX + inset, bounds.maxX - inset),
+          y: clamp(pt.y, bounds.minY + inset, bounds.maxY - inset)
+        };
+      };
+
+      const computeCheekCenter = (pts) => {
+        if (!Array.isArray(pts) || pts.length < 3) return null;
+        const [eye, mouth, jaw] = pts;
+        if (!eye || !mouth || !jaw) return null;
+        const upper = midpoint(eye, mouth) || mouth;
+        const lower = midpoint(mouth, jaw) || mouth;
+        return {
+          x: upper.x * 0.42 + lower.x * 0.58,
+          y: upper.y * 0.28 + lower.y * 0.72
+        };
+      };
+
+      const hide = () => {
+        group.style.display = 'none';
+        if (!element) return;
+        element.style.display = 'none';
+        element.removeAttribute('transform');
+        if (part === 'jaw') {
+          element.setAttribute('d', '');
+        }
+      };
+
+      const updateJaw = (sourcePoints, contourPoints) => {
+        const bounds = ensureBounds(contourPoints);
+        const pts = Array.isArray(sourcePoints) && sourcePoints.length
+          ? sourcePoints
+          : state.base;
+        if (!Array.isArray(pts) || pts.length < 3) {
+          hide();
+          return;
+        }
+        if (!Array.isArray(state.smooth)) {
+          state.smooth = pts.map((pt) => (pt ? { x: pt.x, y: pt.y } : null));
+        }
+        const margin = options.boundsInset ?? 2.4;
+        const smoothed = [];
+        for (let i = 0; i < pts.length; i += 1) {
+          const raw = pts[i];
+          if (!raw) continue;
+          const clamped = clampPointToBounds({ x: raw.x, y: raw.y }, bounds, margin);
+          const prev = state.smooth[i];
+          const next = prev
+            ? {
+              x: prev.x + 0.32 * (clamped.x - prev.x),
+              y: prev.y + 0.32 * (clamped.y - prev.y)
+            }
+            : clamped;
+          state.smooth[i] = next;
+          smoothed.push(next);
+        }
+        if (smoothed.length < 3) {
+          hide();
+          return;
+        }
+        const pathPoints = smoothed.filter(Boolean);
+        if (pathPoints.length < 3) {
+          hide();
+          return;
+        }
+        const pathData = buildSmoothPath(pathPoints, { closed: false, tension: 0.52 });
+        element.setAttribute('d', pathData);
+        element.style.display = '';
+        group.style.display = '';
+      };
+
+      const updateCheek = (sourcePoints, contourPoints) => {
+        const bounds = ensureBounds(contourPoints) || state.bounds;
+        const pts = Array.isArray(sourcePoints) && sourcePoints.length >= 3
+          ? sourcePoints
+          : state.base;
+        if (!Array.isArray(pts) || pts.length < 3) {
+          hide();
+          return;
+        }
+        const [eye, mouth] = pts;
+        const distance = eye && mouth ? dist(eye, mouth) : null;
+        if (!Number.isFinite(distance) || distance < 1e-2) {
+          hide();
+          return;
+        }
+        if (state.baseEyeMouth == null) state.baseEyeMouth = distance;
+        const baseSpan = state.baseEyeMouth || distance;
+        const span = clamp(distance, baseSpan * 0.7, baseSpan * 1.35);
+        const rxTarget = clamp(span * 0.45, 5, bounds ? (bounds.maxX - bounds.minX) * 0.45 : span);
+        const ryTarget = clamp(span * 0.34, 4, bounds ? (bounds.maxY - bounds.minY) * 0.4 : span * 0.6);
+        state.rx = smoothScalar(state.rx, rxTarget, 0.3);
+        state.ry = smoothScalar(state.ry, ryTarget, 0.3);
+        const rawCenter = computeCheekCenter(pts);
+        if (!rawCenter) {
+          hide();
+          return;
+        }
+        const rx = Math.max(state.rx ?? rxTarget, 1);
+        const ry = Math.max(state.ry ?? ryTarget, 1);
+        rawCenter.x += (options.side === 'left' ? 1 : -1) * rx * 0.18;
+        const paddedX = rx * 1.05;
+        const paddedY = ry * 1.05;
+        const clampedCenter = bounds
+          ? {
+            x: clamp(rawCenter.x, bounds.minX + paddedX, bounds.maxX - paddedX),
+            y: clamp(rawCenter.y, bounds.minY + paddedY, bounds.maxY - paddedY)
+          }
+          : rawCenter;
+        state.center = state.center ? EMA(state.center, clampedCenter, 0.34) : clampedCenter;
+        const center = state.center;
+        if (!center) {
+          hide();
+          return;
+        }
+        const angleRaw = mouth && eye ? Math.atan2(mouth.y - eye.y, mouth.x - eye.x) : 0;
+        state.angle = smoothAngle(state.angle, angleRaw, 0.26);
+        element.setAttribute('cx', formatFloat(center.x));
+        element.setAttribute('cy', formatFloat(center.y));
+        element.setAttribute('rx', formatFloat(rx));
+        element.setAttribute('ry', formatFloat(ry));
+        if (Number.isFinite(state.angle ?? angleRaw)) {
+          const deg = ((state.angle ?? angleRaw) * 180) / Math.PI;
+          element.setAttribute('transform', `rotate(${formatFloat(deg)} ${formatFloat(center.x)} ${formatFloat(center.y)})`);
+        } else {
+          element.removeAttribute('transform');
+        }
+        element.style.display = '';
+        group.style.display = '';
+      };
+
+      return {
+        el: group,
+        setBase(points) {
+          if (!Array.isArray(points)) return;
+          state.base = points.map((pt) => ({ x: pt.x, y: pt.y }));
+          if (part === 'jaw') {
+            state.smooth = state.base.map((pt) => (pt ? { x: pt.x, y: pt.y } : null));
+          } else if (part === 'cheek') {
+            if (state.base.length >= 2) {
+              const [eye, mouth] = state.base;
+              const baseDist = eye && mouth ? dist(eye, mouth) : null;
+              if (Number.isFinite(baseDist)) state.baseEyeMouth = baseDist;
+            }
+            const baseCenter = computeCheekCenter(state.base);
+            if (baseCenter) state.center = { ...baseCenter };
+          }
+        },
+        update({ points, fallback, visible = true, contourFallback, contourTarget }) {
+          if (!visible) {
+            hide();
+            return;
+          }
+          const contourPoints = contourTarget?.length ? contourTarget : contourFallback;
+          const source = Array.isArray(points) && points.length ? points : fallback;
+          if (part === 'jaw') {
+            updateJaw(source, contourPoints);
+          } else if (part === 'cheek') {
+            updateCheek(source, contourPoints);
+          } else {
+            hide();
+          }
         }
       };
     }
@@ -2926,6 +3213,7 @@
     const FACE_FEATURE_FACTORIES = {
       brow: createBrowHandler,
       eye: createEyeHandler,
+      skin: createSkinHandler,
       nose: createNoseHandler,
       mouth: createMouthHandler
     };
@@ -3564,6 +3852,48 @@
               'leftJaw1', 'leftJaw0', 'leftTop1', 'leftTop0', 'topMid'
             ],
             width: 8
+          },
+          {
+            id: 'face_skin_jaw',
+            ids: [
+              'rightJaw0', 'rightJaw1', 'rightJaw2', 'rightJaw3', 'rightJaw4', 'rightJaw5',
+              'rightJaw6', 'rightJaw7', 'jawMid', 'leftJaw7', 'leftJaw6', 'leftJaw5',
+              'leftJaw4', 'leftJaw3', 'leftJaw2', 'leftJaw1', 'leftJaw0'
+            ],
+            width: 5,
+            feature: {
+              type: 'skin',
+              id: 'skin_jaw_feature',
+              sharedKey: 'skin_jaw',
+              part: 'jaw',
+              baseColor: '#F3AF9D'
+            }
+          },
+          {
+            id: 'face_skin_cheek_right',
+            ids: ['rightEye4', 'rightMouthCorner', 'rightJaw4'],
+            width: 4,
+            feature: {
+              type: 'skin',
+              id: 'skin_cheek_right',
+              sharedKey: 'skin_cheek_right',
+              part: 'cheek',
+              side: 'right',
+              baseColor: '#F3AF9D'
+            }
+          },
+          {
+            id: 'face_skin_cheek_left',
+            ids: ['leftEye4', 'leftMouthCorner', 'leftJaw4'],
+            width: 4,
+            feature: {
+              type: 'skin',
+              id: 'skin_cheek_left',
+              sharedKey: 'skin_cheek_left',
+              part: 'cheek',
+              side: 'left',
+              baseColor: '#F3AF9D'
+            }
           },
           {
             id: 'face_brow_right',
