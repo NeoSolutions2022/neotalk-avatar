@@ -451,6 +451,7 @@
       19: ['PINKY_DIP', 'PINKY2', 'LITTLE2'],
       20: ['PINKY_TIP', 'PINKY3', 'LITTLE3']
     };
+    const HAND_SMOOTH_ALPHA = 0.45;
     const FINGER_CAPSULE_WIDTHS = {
       thumb: 26,
       index: 20,
@@ -1123,8 +1124,8 @@
           palm.id = `${side}-palm`;
         }
         palm.setAttribute('fill', 'none');
-        palm.setAttribute('stroke', 'rgba(74, 139, 255, 0.55)');
-        palm.setAttribute('stroke-width', '5');
+        palm.setAttribute('stroke', 'rgba(74, 139, 255, 0.42)');
+        palm.setAttribute('stroke-width', '3.2');
         palm.setAttribute('stroke-linecap', 'round');
         palm.setAttribute('stroke-linejoin', 'round');
         palm.style.pointerEvents = 'none';
@@ -1185,8 +1186,8 @@
       let line = info.bones.get(key);
       if (!line) {
         line = document.createElementNS(NS, 'line');
-        line.setAttribute('stroke', 'rgba(74, 139, 255, 0.65)');
-        line.setAttribute('stroke-width', '4');
+        line.setAttribute('stroke', 'rgba(74, 139, 255, 0.58)');
+        line.setAttribute('stroke-width', '2.6');
         line.setAttribute('stroke-linecap', 'round');
         line.setAttribute('stroke-linejoin', 'round');
         line.style.pointerEvents = 'none';
@@ -1203,9 +1204,9 @@
       let capsule = info.capsules.get(key);
       if (!capsule) {
         capsule = document.createElementNS(NS, 'path');
-        capsule.setAttribute('fill', 'rgba(255, 204, 173, 0.5)');
-        capsule.setAttribute('stroke', 'rgba(214, 160, 130, 0.6)');
-        capsule.setAttribute('stroke-width', '2');
+        capsule.setAttribute('fill', 'rgba(255, 214, 197, 0.32)');
+        capsule.setAttribute('stroke', 'rgba(214, 160, 130, 0.45)');
+        capsule.setAttribute('stroke-width', '1.6');
         capsule.setAttribute('stroke-linecap', 'round');
         capsule.setAttribute('stroke-linejoin', 'round');
         capsule.style.pointerEvents = 'none';
@@ -1564,6 +1565,113 @@
         capsules: new Map()
       }
     };
+    const handSmoothState = {
+      left: null,
+      right: null
+    };
+
+    function cloneHandData(hand) {
+      if (!hand) return null;
+      const palm = Array.isArray(hand.palm)
+        ? hand.palm.every(Boolean)
+          ? hand.palm.map((pt) => ({ x: pt.x, y: pt.y }))
+          : []
+        : [];
+      if (!palm.length) return null;
+      const fingers = {};
+      if (hand.fingers && typeof hand.fingers === 'object') {
+        for (const [finger, chain] of Object.entries(hand.fingers)) {
+          if (!Array.isArray(chain) || chain.length < 2) continue;
+          const valid = chain.every(Boolean);
+          if (!valid) continue;
+          fingers[finger] = chain.map((pt) => ({ x: pt.x, y: pt.y }));
+        }
+      }
+      return { palm, fingers };
+    }
+
+    function smoothHandSide(side, nextHand) {
+      const previous = handSmoothState[side];
+      if (!nextHand) {
+        return previous ? cloneHandData(previous) : null;
+      }
+      const rawPalm = Array.isArray(nextHand.palm) ? nextHand.palm : [];
+      if (!rawPalm.length) {
+        return previous ? cloneHandData(previous) : null;
+      }
+      const prevPalm = previous?.palm || [];
+      const smoothedPalm = [];
+      for (let i = 0; i < rawPalm.length; i += 1) {
+        const current = rawPalm[i];
+        const fallback = prevPalm[i] || null;
+        if (!current && !fallback) {
+          return previous ? cloneHandData(previous) : null;
+        }
+        const source = current || fallback;
+        const blended = current && fallback
+          ? EMA(fallback, current, HAND_SMOOTH_ALPHA)
+          : source;
+        smoothedPalm.push({ x: blended.x, y: blended.y });
+      }
+
+      const prevFingers = previous?.fingers || {};
+      const smoothedFingers = {};
+      if (nextHand.fingers && typeof nextHand.fingers === 'object') {
+        for (const [finger, chain] of Object.entries(nextHand.fingers)) {
+          const prevChain = Array.isArray(prevFingers[finger]) ? prevFingers[finger] : [];
+          if (!Array.isArray(chain) || chain.length < 2) {
+            if (prevChain.length >= 2) {
+              smoothedFingers[finger] = prevChain.map((pt) => ({ x: pt.x, y: pt.y }));
+            }
+            continue;
+          }
+          const smoothedChain = [];
+          let valid = true;
+          for (let i = 0; i < chain.length; i += 1) {
+            const current = chain[i];
+            const fallback = prevChain[i] || null;
+            if (!current && !fallback) {
+              valid = false;
+              break;
+            }
+            const source = current || fallback;
+            const blended = current && fallback
+              ? EMA(fallback, current, HAND_SMOOTH_ALPHA)
+              : source;
+            smoothedChain.push({ x: blended.x, y: blended.y });
+          }
+          if (valid && smoothedChain.length >= 2) {
+            smoothedFingers[finger] = smoothedChain;
+          } else if (prevChain.length >= 2) {
+            smoothedFingers[finger] = prevChain.map((pt) => ({ x: pt.x, y: pt.y }));
+          }
+        }
+      }
+
+      for (const [finger, prevChain] of Object.entries(prevFingers)) {
+        if (smoothedFingers[finger]) continue;
+        if (Array.isArray(prevChain) && prevChain.length >= 2) {
+          smoothedFingers[finger] = prevChain.map((pt) => ({ x: pt.x, y: pt.y }));
+        }
+      }
+
+      const result = { palm: smoothedPalm, fingers: smoothedFingers };
+      const snapshot = cloneHandData(result);
+      handSmoothState[side] = snapshot;
+      return snapshot ? cloneHandData(snapshot) : null;
+    }
+
+    function smoothHands(hands) {
+      const left = smoothHandSide('left', hands?.left || null);
+      const right = smoothHandSide('right', hands?.right || null);
+      return { left, right };
+    }
+
+    function resetHandSmoothing() {
+      handSmoothState.left = null;
+      handSmoothState.right = null;
+    }
+
     function normalizePuppetStructure() {
       if (!svgEl) return;
       const illustration = svgEl.getElementById('illustration');
@@ -2559,7 +2667,8 @@
         lower: PUPPET_RIGHT_LOWER_ARM_LEN
       });
       const torsoRig = computeTorsoRig(LSh, RSh, LH, RH, rig);
-      const hands = extractHandsFromFrame(frame, kp);
+      const handsRaw = extractHandsFromFrame(frame, kp);
+      const hands = smoothHands(handsRaw);
 
       if (leftArmRig) {
         const { A, B, C } = leftArmRig;
@@ -2970,6 +3079,7 @@
         frameIndex = 0;
         frameAccumulator = 0;
         lastTickTime = null;
+        resetHandSmoothing();
         tryStart();
       })
       .catch((err) => {
