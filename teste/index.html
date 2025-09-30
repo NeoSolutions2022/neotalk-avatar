@@ -160,6 +160,7 @@
     <button type="button" class="debug-toggle" data-toggle-target="rightArm" aria-pressed="true">Braço direito</button>
     <button type="button" class="debug-toggle" data-toggle-target="body" aria-pressed="true">Corpo</button>
     <button type="button" class="debug-toggle" data-toggle-target="face" aria-pressed="true">Rosto</button>
+    <button type="button" class="debug-toggle" data-toggle-target="faceOverlay" aria-pressed="true">Face (overlay)</button>
     <button type="button" class="debug-toggle" data-toggle-target="fingers" aria-pressed="true">Dedos</button>
   </section>
   <section id="playbackControls" aria-label="Controle de velocidade da animação">
@@ -192,6 +193,14 @@
       const fixed = Number(value).toFixed(2);
       const trimmed = fixed.replace(/\.0+$/, '').replace(/(\.\d+?)0+$/, '$1');
       return trimmed === '-0' ? '0' : trimmed;
+    };
+
+    const escapeSelector = (value) => {
+      if (typeof value !== 'string') return value;
+      if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+        return CSS.escape(value);
+      }
+      return value.replace(/([\0-\x1F\x7F-\x9F\s#.:?%&,+*~\[\]()>@{}|\\^$])/g, '\\$1');
     };
 
     function midpoint(p, q) {
@@ -314,6 +323,51 @@
       return path;
     }
 
+    function parseHexColor(hex) {
+      if (typeof hex !== 'string') return null;
+      const match = hex.trim().match(/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i);
+      if (!match) return null;
+      let value = match[1];
+      if (value.length === 3) {
+        value = value.split('').map((ch) => ch + ch).join('');
+      }
+      const int = Number.parseInt(value, 16);
+      if (!Number.isFinite(int)) return null;
+      return {
+        r: (int >> 16) & 255,
+        g: (int >> 8) & 255,
+        b: int & 255
+      };
+    }
+
+    function rgbToHex({ r, g, b } = {}) {
+      if (!Number.isFinite(r) || !Number.isFinite(g) || !Number.isFinite(b)) return null;
+      const toHex = (component) => {
+        const clamped = clamp(Math.round(component), 0, 255);
+        return clamped.toString(16).padStart(2, '0');
+      };
+      return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+    }
+
+    function mixRgb(a, b, t = 0.5) {
+      if (!a || !b) return a || b;
+      const ratio = clamp(Number.isFinite(t) ? t : 0.5, 0, 1);
+      return {
+        r: a.r + (b.r - a.r) * ratio,
+        g: a.g + (b.g - a.g) * ratio,
+        b: a.b + (b.b - a.b) * ratio
+      };
+    }
+
+    function mixHex(colorA, colorB, t = 0.5) {
+      const a = parseHexColor(colorA);
+      const b = parseHexColor(colorB);
+      if (!a || !b) return colorA;
+      const mixed = mixRgb(a, b, t);
+      const hex = rgbToHex(mixed);
+      return hex || colorA;
+    }
+
     const PUPPET_LEFT_SH = { x: 605.7, y: 294.3 };
     const PUPPET_RIGHT_SH = { x: 392.8, y: 294.3 };
     const PUPPET_LEFT_EL = { x: 710.1, y: 294.0 };
@@ -375,10 +429,47 @@
       rightArm: DEBUG_ARM,
       body: true,
       face: true,
+      faceOverlay: true,
       fingers: true
     };
+    const FACE_OVERLAY_ID = 'faceSynth';
+    const LEGACY_FACE_OVERLAY_ID = 'face_overlay_layer';
+    const FACE_OVERLAY_SUBGROUP_IDS = {
+      hair: 'fs-hair',
+      skin: 'fs-skin',
+      mouth: 'fs-mouth',
+      nose: 'fs-nose',
+      eyes: 'fs-eyes',
+      brows: 'fs-brows'
+    };
+    const FACE_CONTOUR_POINT_IDS = [
+      'topMid',
+      'rightTop0',
+      'rightTop1',
+      'rightJaw0',
+      'rightJaw1',
+      'rightJaw2',
+      'rightJaw3',
+      'rightJaw4',
+      'rightJaw5',
+      'rightJaw6',
+      'rightJaw7',
+      'jawMid',
+      'leftJaw7',
+      'leftJaw6',
+      'leftJaw5',
+      'leftJaw4',
+      'leftJaw3',
+      'leftJaw2',
+      'leftJaw1',
+      'leftJaw0',
+      'leftTop1',
+      'leftTop0',
+      'topMid'
+    ];
     let faceTemplatesRoot = null;
     let faceOverlayLayer = null;
+    const faceOverlayGroups = new Map();
     let headTargets = [];
     let bodyTargets = [];
     let lastHeadMatrix = null;
@@ -514,6 +605,19 @@
         x: prev.x + a * (cur.x - prev.x),
         y: prev.y + a * (cur.y - prev.y)
       };
+    };
+
+    const smoothScalar = (prev, next, alpha = 0.35) => {
+      if (!Number.isFinite(next)) return prev ?? 0;
+      if (prev == null) return next;
+      return prev + alpha * (next - prev);
+    };
+
+    const smoothAngle = (prev, next, alpha = 0.3) => {
+      if (!Number.isFinite(next)) return prev ?? 0;
+      if (prev == null) return next;
+      const delta = Math.atan2(Math.sin(next - prev), Math.cos(next - prev));
+      return prev + alpha * delta;
     };
 
     function safeKP(kp, name) {
@@ -1096,6 +1200,7 @@
         root.id = 'debugHands';
         root.setAttribute('fill', 'none');
         root.style.pointerEvents = 'none';
+        root.setAttribute('data-debug-line', 'true');
       }
       if (root.parentNode !== context) {
         context.appendChild(root);
@@ -1492,6 +1597,7 @@
       const showBody = debugToggles.body;
       const showFace = debugToggles.face;
       const showHands = debugToggles.fingers;
+      const showFaceOverlay = debugToggles.faceOverlay;
 
       if (armPaths.left) armPaths.left.style.display = showLeft ? 'block' : 'none';
       if (armPaths.right) armPaths.right.style.display = showRight ? 'block' : 'none';
@@ -1515,6 +1621,10 @@
       ], showBody);
 
       toggle(segments.face.map((guide) => guide.debug), showFace);
+
+      if (faceOverlayLayer) {
+        faceOverlayLayer.style.display = showFaceOverlay ? '' : 'none';
+      }
 
       const updateArmElements = (side) => {
         const arm = puppetArms[side];
@@ -1697,7 +1807,7 @@
       const headNodes = [];
       const bodyNodes = [];
       const HEAD_THRESHOLD = 330;
-      const skipIds = new Set(['face_overlay_layer']);
+      const skipIds = new Set([FACE_OVERLAY_ID, LEGACY_FACE_OVERLAY_ID]);
 
       const children = Array.from(illustration.children);
       children.forEach((node) => {
@@ -1834,6 +1944,7 @@
       line.setAttribute('stroke-width', width);
       line.setAttribute('stroke-linecap', 'round');
       line.classList.add('joint');
+      line.setAttribute('data-debug-line', 'true');
       svgEl.appendChild(line);
       return line;
     }
@@ -1847,6 +1958,7 @@
       poly.setAttribute('stroke-linecap', 'round');
       poly.setAttribute('stroke-linejoin', 'round');
       poly.classList.add('joint');
+      poly.setAttribute('data-debug-line', 'true');
       svgEl.appendChild(poly);
       return poly;
     }
@@ -1947,15 +2059,437 @@
 
     const faceFeatureRegistry = new Map();
 
-    function appendToFaceOverlay(element) {
+    function ensureFaceOverlayGroup(id) {
+      if (!faceOverlayLayer || !id) return null;
+      if (faceOverlayGroups.has(id)) {
+        const existing = faceOverlayGroups.get(id);
+        if (existing && existing.parentNode !== faceOverlayLayer) {
+          faceOverlayLayer.appendChild(existing);
+        }
+        return existing;
+      }
+      let group = faceOverlayLayer.querySelector(`#${escapeSelector(id)}`);
+      if (!group) {
+        group = document.createElementNS(NS, 'g');
+        group.id = id;
+      }
+      group.style.pointerEvents = 'none';
+      if (!group.parentNode) {
+        faceOverlayLayer.appendChild(group);
+      }
+      faceOverlayGroups.set(id, group);
+      return group;
+    }
+
+    function ensureFaceOverlayGroups() {
+      ensureFaceOverlayGroup(FACE_OVERLAY_SUBGROUP_IDS.hair);
+      ensureFaceOverlayGroup(FACE_OVERLAY_SUBGROUP_IDS.skin);
+      ensureFaceOverlayGroup(FACE_OVERLAY_SUBGROUP_IDS.mouth);
+      ensureFaceOverlayGroup(FACE_OVERLAY_SUBGROUP_IDS.nose);
+      ensureFaceOverlayGroup(FACE_OVERLAY_SUBGROUP_IDS.eyes);
+      ensureFaceOverlayGroup(FACE_OVERLAY_SUBGROUP_IDS.brows);
+    }
+
+    function positionFaceOverlayLayer() {
+      if (!svgEl || !faceOverlayLayer) return;
+      ensureFaceOverlayGroups();
+      const parent = svgEl;
+      let reference = null;
+      const debugNode = parent.querySelector('[data-debug-line]');
+      if (debugNode && debugNode.parentNode === parent) {
+        reference = debugNode;
+      } else {
+        const headNode = svgEl.getElementById('head');
+        if (headNode && headNode.parentNode === parent) {
+          reference = headNode.nextSibling;
+        } else {
+          const illustration = svgEl.getElementById('illustration');
+          if (illustration && illustration.parentNode === parent) {
+            reference = illustration.nextSibling;
+          }
+        }
+      }
+      if (faceOverlayLayer.parentNode !== parent || faceOverlayLayer.nextSibling !== reference) {
+        parent.insertBefore(faceOverlayLayer, reference);
+      }
+    }
+
+    function appendToFaceOverlay(element, targetGroupId = null) {
       if (!element) return null;
       element.style.pointerEvents = 'none';
-      if (faceOverlayLayer && faceOverlayLayer.parentNode) {
+      let target = faceOverlayLayer;
+      if (targetGroupId) {
+        ensureFaceOverlayGroups();
+        target = ensureFaceOverlayGroup(targetGroupId) || faceOverlayLayer;
+      }
+      if (target && target.parentNode) {
+        target.appendChild(element);
+      } else if (faceOverlayLayer && faceOverlayLayer.parentNode) {
         faceOverlayLayer.appendChild(element);
       } else if (svgEl) {
         svgEl.appendChild(element);
       }
+      positionFaceOverlayLayer();
       return element;
+    }
+
+    function createHairHandler(options = {}) {
+      const group = document.createElementNS(NS, 'g');
+      if (options.id) group.id = options.id;
+      group.style.display = 'none';
+      appendToFaceOverlay(group, FACE_OVERLAY_SUBGROUP_IDS.hair);
+
+      const hairColor = options.color || '#2F2A3A';
+      const highlightColor = options.highlight || '#514869';
+
+      const bun = document.createElementNS(NS, 'ellipse');
+      bun.setAttribute('fill', hairColor);
+      group.appendChild(bun);
+
+      const highlight = document.createElementNS(NS, 'path');
+      highlight.setAttribute('fill', 'none');
+      highlight.setAttribute('stroke', highlightColor);
+      highlight.setAttribute('stroke-linecap', 'round');
+      highlight.setAttribute('stroke-linejoin', 'round');
+      highlight.setAttribute('stroke-opacity', '0.7');
+      group.appendChild(highlight);
+
+      const strandLeft = document.createElementNS(NS, 'path');
+      strandLeft.setAttribute('fill', 'none');
+      strandLeft.setAttribute('stroke', hairColor);
+      strandLeft.setAttribute('stroke-linecap', 'round');
+      strandLeft.setAttribute('stroke-linejoin', 'round');
+      group.appendChild(strandLeft);
+
+      const strandRight = document.createElementNS(NS, 'path');
+      strandRight.setAttribute('fill', 'none');
+      strandRight.setAttribute('stroke', hairColor);
+      strandRight.setAttribute('stroke-linecap', 'round');
+      strandRight.setAttribute('stroke-linejoin', 'round');
+      group.appendChild(strandRight);
+
+      const state = {
+        base: {
+          top: null,
+          jaw: null,
+          leftWidth: null,
+          rightWidth: null,
+          leftCheek: null,
+          rightCheek: null,
+          leftBrow: null,
+          rightBrow: null
+        },
+        baseWidth: null,
+        baseHeight: null,
+        baseBunRadius: null,
+        points: {},
+        scalars: {},
+        strands: {
+          left: {},
+          right: {}
+        }
+      };
+
+      const clonePoint = (pt) => (pt ? { x: pt.x, y: pt.y } : null);
+
+      const buildMap = (points, idsSource) => {
+        if (!Array.isArray(points) || !Array.isArray(idsSource)) return null;
+        const map = {};
+        const count = Math.min(points.length, idsSource.length);
+        for (let i = 0; i < count; i += 1) {
+          const id = idsSource[i];
+          const pt = points[i];
+          if (!id || !pt) continue;
+          map[id] = pt;
+        }
+        return map;
+      };
+
+      const smoothPoint = (key, target, alpha = 0.35) => {
+        if (!target) return null;
+        const prev = state.points[key] || null;
+        const next = prev
+          ? {
+            x: prev.x + alpha * (target.x - prev.x),
+            y: prev.y + alpha * (target.y - prev.y)
+          }
+          : { x: target.x, y: target.y };
+        state.points[key] = next;
+        return next;
+      };
+
+      const smoothScalarKey = (key, target, alpha = 0.3) => {
+        if (!Number.isFinite(target)) return state.scalars[key] ?? target ?? null;
+        const prev = state.scalars[key];
+        const next = smoothScalar(prev, target, alpha);
+        state.scalars[key] = next;
+        return next;
+      };
+
+      const ensureBase = (contourMap, fallbackMap) => {
+        if (!contourMap || state.base.top) return;
+        state.base.top = clonePoint(contourMap.topMid || null);
+        state.base.jaw = clonePoint(contourMap.jawMid || null);
+        state.base.leftWidth = clonePoint(contourMap.leftJaw6 || contourMap.leftJaw5 || null);
+        state.base.rightWidth = clonePoint(contourMap.rightJaw6 || contourMap.rightJaw5 || null);
+        state.base.leftCheek = clonePoint(contourMap.leftJaw4 || contourMap.leftJaw3 || null);
+        state.base.rightCheek = clonePoint(contourMap.rightJaw4 || contourMap.rightJaw3 || null);
+        if (fallbackMap) {
+          state.base.leftBrow = clonePoint(fallbackMap.leftBrow2 || fallbackMap.leftBrow3 || null);
+          state.base.rightBrow = clonePoint(fallbackMap.rightBrow2 || fallbackMap.rightBrow3 || null);
+          if (!state.base.leftWidth && fallbackMap.leftJaw6) {
+            state.base.leftWidth = clonePoint(fallbackMap.leftJaw6);
+          }
+          if (!state.base.rightWidth && fallbackMap.rightJaw6) {
+            state.base.rightWidth = clonePoint(fallbackMap.rightJaw6);
+          }
+          if (!state.base.leftCheek && fallbackMap.leftJaw4) {
+            state.base.leftCheek = clonePoint(fallbackMap.leftJaw4);
+          }
+          if (!state.base.rightCheek && fallbackMap.rightJaw4) {
+            state.base.rightCheek = clonePoint(fallbackMap.rightJaw4);
+          }
+        }
+        if (state.base.top && state.base.jaw) {
+          const height = dist(state.base.top, state.base.jaw);
+          if (Number.isFinite(height) && height > 0) state.baseHeight = height;
+        }
+        if (state.base.leftWidth && state.base.rightWidth) {
+          const width = dist(state.base.leftWidth, state.base.rightWidth);
+          if (Number.isFinite(width) && width > 0) state.baseWidth = width;
+        }
+        if (!state.baseBunRadius && state.baseWidth) {
+          state.baseBunRadius = state.baseWidth * 0.42;
+        }
+      };
+
+      const getTransformed = (matrix, point) => {
+        if (!point) return null;
+        return matrix ? transformPoint(matrix, point) : { x: point.x, y: point.y };
+      };
+
+      return {
+        el: group,
+        setBase() {},
+        update({
+          points,
+          fallback,
+          ids = [],
+          matrix,
+          contourFallback,
+          contourTarget,
+          visible = true
+        }) {
+          if (!visible || !matrix) {
+            group.style.display = 'none';
+            return;
+          }
+
+          const contourFallbackMap = buildMap(contourFallback, FACE_CONTOUR_POINT_IDS);
+          if (!contourFallbackMap) {
+            group.style.display = 'none';
+            return;
+          }
+
+          const fallbackMap = buildMap(fallback, ids) || {};
+          ensureBase(contourFallbackMap, fallbackMap);
+
+          const contourTargetMap = buildMap(contourTarget, FACE_CONTOUR_POINT_IDS) || {};
+          const targetMap = buildMap(points, ids) || {};
+
+          const resolvePoint = (id) => {
+            if (!id) return null;
+            if (Object.prototype.hasOwnProperty.call(targetMap, id)) return targetMap[id];
+            if (Object.prototype.hasOwnProperty.call(contourTargetMap, id)) return contourTargetMap[id];
+            if (Object.prototype.hasOwnProperty.call(fallbackMap, id)) {
+              return getTransformed(matrix, fallbackMap[id]);
+            }
+            if (Object.prototype.hasOwnProperty.call(contourFallbackMap, id)) {
+              return getTransformed(matrix, contourFallbackMap[id]);
+            }
+            switch (id) {
+              case 'leftJaw6':
+              case 'leftJaw5':
+                if (state.base.leftWidth) return getTransformed(matrix, state.base.leftWidth);
+                break;
+              case 'rightJaw6':
+              case 'rightJaw5':
+                if (state.base.rightWidth) return getTransformed(matrix, state.base.rightWidth);
+                break;
+              case 'leftJaw4':
+              case 'leftJaw3':
+                if (state.base.leftCheek) return getTransformed(matrix, state.base.leftCheek);
+                break;
+              case 'rightJaw4':
+              case 'rightJaw3':
+                if (state.base.rightCheek) return getTransformed(matrix, state.base.rightCheek);
+                break;
+              case 'leftBrow2':
+              case 'leftBrow3':
+                if (state.base.leftBrow) return getTransformed(matrix, state.base.leftBrow);
+                break;
+              case 'rightBrow2':
+              case 'rightBrow3':
+                if (state.base.rightBrow) return getTransformed(matrix, state.base.rightBrow);
+                break;
+              case 'jawMid':
+                if (state.base.jaw) return getTransformed(matrix, state.base.jaw);
+                break;
+              case 'topMid':
+                if (state.base.top) return getTransformed(matrix, state.base.top);
+                break;
+              default:
+                break;
+            }
+            return null;
+          };
+
+          const top = state.base.top ? getTransformed(matrix, state.base.top) : resolvePoint('topMid');
+          const jaw = state.base.jaw ? getTransformed(matrix, state.base.jaw) : resolvePoint('jawMid');
+          const leftWidth = resolvePoint('leftJaw6') || (state.base.leftWidth ? getTransformed(matrix, state.base.leftWidth) : null);
+          const rightWidth = resolvePoint('rightJaw6') || (state.base.rightWidth ? getTransformed(matrix, state.base.rightWidth) : null);
+          const leftCheek = resolvePoint('leftJaw4') || (state.base.leftCheek ? getTransformed(matrix, state.base.leftCheek) : null);
+          const rightCheek = resolvePoint('rightJaw4') || (state.base.rightCheek ? getTransformed(matrix, state.base.rightCheek) : null);
+          const leftBrow = resolvePoint('leftBrow2') || (state.base.leftBrow ? getTransformed(matrix, state.base.leftBrow) : null);
+          const rightBrow = resolvePoint('rightBrow2') || (state.base.rightBrow ? getTransformed(matrix, state.base.rightBrow) : null);
+
+          if (!top || !jaw || !leftWidth || !rightWidth || !leftCheek || !rightCheek) {
+            group.style.display = 'none';
+            return;
+          }
+
+          const headHeight = Math.max(dist(top, jaw), 1);
+          const faceWidth = Math.max(dist(leftWidth, rightWidth), 1);
+
+          if (!state.baseWidth) state.baseWidth = faceWidth;
+          if (!state.baseHeight) state.baseHeight = headHeight;
+          if (!state.baseBunRadius) state.baseBunRadius = faceWidth * 0.42;
+
+          const widthRatio = state.baseWidth ? faceWidth / state.baseWidth : 1;
+          const heightRatio = state.baseHeight ? headHeight / state.baseHeight : 1;
+          const scaleTarget = clamp((widthRatio + heightRatio) / 2, 0.88, 1.18);
+          const scale = smoothScalarKey('scale', scaleTarget, 0.25) ?? scaleTarget;
+
+          const upVec = { x: top.x - jaw.x, y: top.y - jaw.y };
+          const upLen = Math.hypot(upVec.x, upVec.y) || 1;
+          const upUnit = { x: upVec.x / upLen, y: upVec.y / upLen };
+          const downUnit = { x: -upUnit.x, y: -upUnit.y };
+
+          const sideVec = { x: leftWidth.x - rightWidth.x, y: leftWidth.y - rightWidth.y };
+          const sideLen = Math.hypot(sideVec.x, sideVec.y) || 1;
+          const sideUnit = { x: sideVec.x / sideLen, y: sideVec.y / sideLen };
+          const rightOut = { x: -sideUnit.x, y: -sideUnit.y };
+          const leftOut = { x: sideUnit.x, y: sideUnit.y };
+
+          const bunOffsetUp = headHeight * 0.32;
+          const bunCenterTarget = {
+            x: top.x + upUnit.x * bunOffsetUp + downUnit.x * headHeight * 0.04,
+            y: top.y + upUnit.y * bunOffsetUp + downUnit.y * headHeight * 0.04
+          };
+          const bunCenter = smoothPoint('bunCenter', bunCenterTarget, 0.32);
+
+          const bunRadiusTarget = clamp((state.baseBunRadius || faceWidth * 0.4) * scale, faceWidth * 0.28, faceWidth * 0.6);
+          const bunRadius = smoothScalarKey('bunRadius', bunRadiusTarget, 0.28) ?? bunRadiusTarget;
+
+          if (!bunCenter || !Number.isFinite(bunRadius) || bunRadius < 1) {
+            group.style.display = 'none';
+            return;
+          }
+
+          const bunRy = bunRadius * 0.82;
+          bun.setAttribute('cx', formatFloat(bunCenter.x));
+          bun.setAttribute('cy', formatFloat(bunCenter.y));
+          bun.setAttribute('rx', formatFloat(bunRadius));
+          bun.setAttribute('ry', formatFloat(bunRy));
+          bun.style.display = '';
+
+          const highlightSpan = bunRadius * 1.25;
+          const highlightLift = bunRadius * 0.35;
+          const highlightStartTarget = {
+            x: bunCenter.x + sideUnit.x * (-highlightSpan * 0.5) + upUnit.x * (-highlightLift),
+            y: bunCenter.y + sideUnit.y * (-highlightSpan * 0.5) + upUnit.y * (-highlightLift)
+          };
+          const highlightEndTarget = {
+            x: bunCenter.x + sideUnit.x * (highlightSpan * 0.5) + upUnit.x * (-highlightLift),
+            y: bunCenter.y + sideUnit.y * (highlightSpan * 0.5) + upUnit.y * (-highlightLift)
+          };
+          const highlightCtrlTarget = {
+            x: bunCenter.x + upUnit.x * (-bunRadius * 0.95),
+            y: bunCenter.y + upUnit.y * (-bunRadius * 0.95)
+          };
+
+          const highlightStart = smoothPoint('highlightStart', highlightStartTarget, 0.4);
+          const highlightEnd = smoothPoint('highlightEnd', highlightEndTarget, 0.4);
+          const highlightCtrl = smoothPoint('highlightCtrl', highlightCtrlTarget, 0.4);
+          const highlightWidth = clamp(bunRadius * 0.22, 2.5, bunRadius * 0.45);
+
+          if (highlightStart && highlightEnd && highlightCtrl) {
+            highlight.setAttribute('stroke-width', formatFloat(highlightWidth));
+            highlight.setAttribute('d', [
+              `M ${formatFloat(highlightStart.x)} ${formatFloat(highlightStart.y)}`,
+              `Q ${formatFloat(highlightCtrl.x)} ${formatFloat(highlightCtrl.y)} ${formatFloat(highlightEnd.x)} ${formatFloat(highlightEnd.y)}`
+            ].join(' '));
+            highlight.style.display = '';
+          } else {
+            highlight.style.display = 'none';
+          }
+
+          const updateStrand = (side) => {
+            const isLeft = side === 'left';
+            const outward = isLeft ? leftOut : rightOut;
+            const brow = isLeft ? leftBrow : rightBrow;
+            const cheek = isLeft ? leftCheek : rightCheek;
+            if (!cheek) return;
+            const startRef = brow || (isLeft ? leftWidth : rightWidth);
+            const startTarget = startRef
+              ? {
+                x: startRef.x + outward.x * faceWidth * 0.16 + downUnit.x * headHeight * 0.12,
+                y: startRef.y + outward.y * faceWidth * 0.16 + downUnit.y * headHeight * 0.12
+              }
+              : {
+                x: (isLeft ? leftWidth.x : rightWidth.x) + outward.x * faceWidth * 0.16,
+                y: (isLeft ? leftWidth.y : rightWidth.y) + outward.y * faceWidth * 0.16
+              };
+            const endTarget = {
+              x: cheek.x + outward.x * faceWidth * 0.08 + upUnit.x * (-headHeight * 0.08),
+              y: cheek.y + outward.y * faceWidth * 0.08 + upUnit.y * (-headHeight * 0.08)
+            };
+            const midPoint = {
+              x: (startTarget.x + endTarget.x) / 2,
+              y: (startTarget.y + endTarget.y) / 2
+            };
+            const ctrlTarget = {
+              x: midPoint.x + outward.x * faceWidth * 0.06 + downUnit.x * headHeight * 0.18,
+              y: midPoint.y + outward.y * faceWidth * 0.06 + downUnit.y * headHeight * 0.18
+            };
+
+            const key = isLeft ? 'left' : 'right';
+            const strand = state.strands[key];
+            strand.start = smoothPoint(`strand_${key}_start`, startTarget, 0.4);
+            strand.end = smoothPoint(`strand_${key}_end`, endTarget, 0.4);
+            strand.ctrl = smoothPoint(`strand_${key}_ctrl`, ctrlTarget, 0.4);
+            const widthTarget = clamp((state.baseWidth || faceWidth) * 0.08 * scale, 3, faceWidth * 0.16);
+            strand.width = smoothScalarKey(`strand_${key}_width`, widthTarget, 0.3) ?? widthTarget;
+
+            const element = isLeft ? strandLeft : strandRight;
+            if (strand.start && strand.end && strand.ctrl) {
+              element.setAttribute('stroke-width', formatFloat(strand.width));
+              element.setAttribute('d', [
+                `M ${formatFloat(strand.start.x)} ${formatFloat(strand.start.y)}`,
+                `Q ${formatFloat(strand.ctrl.x)} ${formatFloat(strand.ctrl.y)} ${formatFloat(strand.end.x)} ${formatFloat(strand.end.y)}`
+              ].join(' '));
+              element.style.display = '';
+            } else {
+              element.style.display = 'none';
+            }
+          };
+
+          updateStrand('left');
+          updateStrand('right');
+
+          group.style.display = '';
+        }
+      };
     }
 
     function createBrowHandler(options = {}) {
@@ -1963,127 +2497,559 @@
       const path = template && template.tagName?.toLowerCase() === 'path'
         ? template
         : document.createElementNS(NS, 'path');
-      applyTemplateStyles(template, path, ['fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin'], {
-        fill: 'none',
-        stroke: options.stroke || '#2C323A',
-        'stroke-width': options.strokeWidth ?? 12,
-        'stroke-linecap': 'round',
-        'stroke-linejoin': 'round'
+      applyTemplateStyles(template, path, ['stroke', 'stroke-width'], {
+        stroke: options.stroke || '#362C3F',
+        'stroke-width': options.strokeWidth ?? 8
       });
-      appendToFaceOverlay(path);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke-linecap', 'round');
+      path.setAttribute('stroke-linejoin', 'round');
+      appendToFaceOverlay(path, FACE_OVERLAY_SUBGROUP_IDS.brows);
       if (options.id && !path.id) path.id = options.id;
+
       const state = {
         base: Array.isArray(options.fallback)
           ? options.fallback.map((pt) => ({ x: pt.x, y: pt.y }))
-          : null
+          : null,
+        smoothStart: null,
+        smoothEnd: null,
+        smoothPeak: null,
+        archHeight: null,
+        baseWidth: null,
+        baseHeight: null
       };
+
+      const captureBaseMetrics = (points) => {
+        if (!Array.isArray(points) || points.length < 2) return;
+        const start = points[0];
+        const end = points[points.length - 1];
+        if (!start || !end) return;
+        const width = dist(start, end);
+        if (!Number.isFinite(width) || width < 1e-3) return;
+        const midPoint = mid(start, end);
+        const candidates = points.slice(1, -1).filter(Boolean);
+        const archPoint = candidates.length ? centroid(candidates) : midPoint;
+        const vx = end.x - start.x;
+        const vy = end.y - start.y;
+        const len = Math.hypot(vx, vy) || 1;
+        const nx = -vy / len;
+        const ny = vx / len;
+        const projection = (archPoint.x - midPoint.x) * nx + (archPoint.y - midPoint.y) * ny;
+        state.baseWidth = width;
+        state.baseHeight = Math.max(Math.abs(projection), width * 0.18);
+      };
+
+      if (state.base) {
+        captureBaseMetrics(state.base);
+      }
+
+      const buildPath = (start, peak, end) => {
+        const ctrlBias = 0.38;
+        const ctrl1 = {
+          x: start.x + (peak.x - start.x) * ctrlBias,
+          y: start.y + (peak.y - start.y) * ctrlBias
+        };
+        const ctrl2 = {
+          x: end.x + (peak.x - end.x) * ctrlBias,
+          y: end.y + (peak.y - end.y) * ctrlBias
+        };
+        return [
+          `M ${formatFloat(start.x)} ${formatFloat(start.y)}`,
+          `C ${formatFloat(ctrl1.x)} ${formatFloat(ctrl1.y)} ${formatFloat(ctrl2.x)} ${formatFloat(ctrl2.y)} ${formatFloat(end.x)} ${formatFloat(end.y)}`
+        ].join(' ');
+      };
+
       return {
         el: path,
         setBase(points) {
           if (Array.isArray(points)) {
             state.base = points.map((pt) => ({ x: pt.x, y: pt.y }));
+            captureBaseMetrics(state.base);
           }
         },
-        update({ points, inverseMatrix }) {
+        update({ points, inverseMatrix, visible = true }) {
+          if (!visible) {
+            path.style.display = 'none';
+            return;
+          }
           const ptsGlobal = Array.isArray(points) && points.length >= 2 ? points : state.base;
-          if (!ptsGlobal || ptsGlobal.length < 2) return;
+          if (!Array.isArray(ptsGlobal) || ptsGlobal.length < 2) {
+            path.style.display = 'none';
+            return;
+          }
           const local = inverseMatrix ? mapPoints(ptsGlobal, inverseMatrix) : ptsGlobal;
           const pts = Array.isArray(local) && local.length >= 2 ? local : state.base;
-          if (!pts || pts.length < 2) return;
-          // Preserve the template styling while redrawing the brow in head-local space so the head transform keeps it attached.
-          const data = buildSmoothPath(pts, { closed: false, tension: options.tension ?? 0.6 });
+          if (!Array.isArray(pts) || pts.length < 2) {
+            path.style.display = 'none';
+            return;
+          }
+          const startRaw = pts[0];
+          const endRaw = pts[pts.length - 1];
+          if (!startRaw || !endRaw) {
+            path.style.display = 'none';
+            return;
+          }
+          const vx = endRaw.x - startRaw.x;
+          const vy = endRaw.y - startRaw.y;
+          const span = Math.hypot(vx, vy);
+          if (span < 1e-2) {
+            path.style.display = 'none';
+            return;
+          }
+          const nx = -vy / span;
+          const ny = vx / span;
+          const midPoint = mid(startRaw, endRaw);
+          const archCandidates = pts.slice(1, -1).filter(Boolean);
+          const archCenter = archCandidates.length ? centroid(archCandidates) : midPoint;
+          let projection = (archCenter.x - midPoint.x) * nx + (archCenter.y - midPoint.y) * ny;
+          if (!Number.isFinite(projection)) projection = state.baseHeight ?? span * 0.22;
+          const baseWidth = state.baseWidth ?? span;
+          const baseHeight = state.baseHeight ?? span * 0.22;
+          const minArch = Math.max(baseWidth * 0.16, baseHeight * 0.7);
+          const maxArch = Math.max(baseWidth * 0.6, baseHeight * 1.8);
+          const targetArch = clamp(Math.abs(projection), minArch, maxArch);
+          state.archHeight = smoothScalar(state.archHeight, targetArch, 0.28);
+          state.smoothStart = EMA(state.smoothStart, startRaw, 0.45);
+          state.smoothEnd = EMA(state.smoothEnd, endRaw, 0.45);
+          const start = state.smoothStart || startRaw;
+          const end = state.smoothEnd || endRaw;
+          const sx = end.x - start.x;
+          const sy = end.y - start.y;
+          const seg = Math.hypot(sx, sy);
+          if (seg < 1e-2) {
+            path.style.display = 'none';
+            return;
+          }
+          const ux = sx / seg;
+          const uy = sy / seg;
+          const nux = -uy;
+          const nuy = ux;
+          const arch = state.archHeight || targetArch;
+          const midPointSmooth = mid(start, end);
+          const peakBase = {
+            x: midPointSmooth.x + nux * arch,
+            y: midPointSmooth.y + nuy * arch
+          };
+          state.smoothPeak = EMA(state.smoothPeak, peakBase, 0.32);
+          const peak = state.smoothPeak || peakBase;
+          const data = buildPath(start, peak, end);
           path.setAttribute('d', data);
+          path.style.display = '';
         }
       };
     }
 
     function createEyeHandler(options = {}) {
       const template = cloneTemplateNode(options.templateId || '');
-      const templateShapes = template ? Array.from(template.querySelectorAll('ellipse, path')) : [];
-      const eyelidSource = templateShapes[0] || null;
-      const pupilSource = templateShapes[1] || null;
       const group = template && template.tagName?.toLowerCase() === 'g'
         ? template
         : document.createElementNS(NS, 'g');
       group.innerHTML = '';
-      appendToFaceOverlay(group);
+      appendToFaceOverlay(group, FACE_OVERLAY_SUBGROUP_IDS.eyes);
       if (options.id) group.id = options.id;
 
-      const outer = document.createElementNS(NS, 'path');
-      applyTemplateStyles(eyelidSource, outer, ['fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin'], {
-        fill: options.fill || '#FFFFFF',
-        stroke: options.stroke || '#2C323A',
-        'stroke-width': options.strokeWidth ?? 4,
-        'stroke-linecap': 'round',
-        'stroke-linejoin': 'round'
+      const sclera = document.createElementNS(NS, 'path');
+      applyTemplateStyles(template, sclera, ['fill', 'stroke', 'stroke-width'], {
+        fill: options.fill || '#FBFEFF',
+        stroke: options.stroke || '#29303A',
+        'stroke-width': options.strokeWidth ?? 3.2
       });
-      group.appendChild(outer);
+      sclera.setAttribute('stroke-linecap', 'round');
+      sclera.setAttribute('stroke-linejoin', 'round');
+      group.appendChild(sclera);
+
+      const upperLid = document.createElementNS(NS, 'path');
+      upperLid.setAttribute('fill', 'none');
+      applyTemplateStyles(template, upperLid, ['stroke', 'stroke-width'], {
+        stroke: options.lidStroke || '#1D2330',
+        'stroke-width': options.lidStrokeWidth ?? 2.1
+      });
+      upperLid.setAttribute('stroke-linecap', 'round');
+      upperLid.setAttribute('stroke-linejoin', 'round');
+      group.appendChild(upperLid);
+
+      const iris = document.createElementNS(NS, 'circle');
+      applyTemplateStyles(template, iris, ['fill'], {
+        fill: options.irisFill || '#6F8FB6'
+      });
+      iris.setAttribute('stroke', 'none');
+      group.appendChild(iris);
 
       const pupil = document.createElementNS(NS, 'circle');
-      applyTemplateStyles(pupilSource, pupil, ['fill'], {
-        fill: options.pupilFill || '#2C323A'
+      applyTemplateStyles(template, pupil, ['fill'], {
+        fill: options.pupilFill || '#141920'
       });
       pupil.setAttribute('stroke', 'none');
       group.appendChild(pupil);
 
       const highlight = document.createElementNS(NS, 'circle');
       highlight.setAttribute('fill', options.highlightFill || '#FFFFFF');
-      highlight.setAttribute('opacity', options.highlightOpacity ?? 0.6);
+      highlight.setAttribute('opacity', options.highlightOpacity ?? 0.62);
       group.appendChild(highlight);
 
       const state = {
         base: Array.isArray(options.fallback)
           ? options.fallback.map((pt) => ({ x: pt.x, y: pt.y }))
-          : null
+          : null,
+        center: null,
+        rotation: null,
+        width: null,
+        height: null,
+        baseWidth: null,
+        baseHeight: null
       };
+
+      const captureBaseMetrics = (points) => {
+        if (!Array.isArray(points) || points.length < 4) return;
+        const len = points.length;
+        const outerCorner = points[0];
+        const innerCorner = points[Math.floor(len / 2)];
+        if (!outerCorner || !innerCorner) return;
+        const topCandidates = [points[1], points[2]].filter(Boolean);
+        const bottomCandidates = [points[len - 2], points[len - 1]].filter(Boolean);
+        const topMid = topCandidates.length ? centroid(topCandidates) : mid(outerCorner, innerCorner);
+        const bottomMid = bottomCandidates.length ? centroid(bottomCandidates) : topMid;
+        state.baseWidth = dist(outerCorner, innerCorner);
+        state.baseHeight = dist(topMid, bottomMid);
+      };
+
+      if (state.base) {
+        captureBaseMetrics(state.base);
+      }
 
       return {
         el: group,
         setBase(points) {
           if (Array.isArray(points)) {
             state.base = points.map((pt) => ({ x: pt.x, y: pt.y }));
+            captureBaseMetrics(state.base);
           }
         },
-        update({ points, inverseMatrix }) {
+        update({ points, inverseMatrix, visible = true }) {
+          if (!visible) {
+            group.style.display = 'none';
+            return;
+          }
           const ptsRaw = Array.isArray(points) && points.length ? points : state.base;
-          if (!Array.isArray(ptsRaw) || !ptsRaw.length) return;
+          if (!Array.isArray(ptsRaw) || ptsRaw.length < 4) {
+            group.style.display = 'none';
+            return;
+          }
           const localRaw = inverseMatrix ? mapPoints(ptsRaw, inverseMatrix) : ptsRaw;
-          const working = Array.isArray(localRaw) && localRaw.length ? localRaw : state.base;
-          const pts = normalizeLoopPoints(working || []);
-          if (!Array.isArray(pts) || pts.length < 3) return;
-          // Rebuild the eyelid path each frame in head-local space so the head transform keeps it glued to the mesh.
-          const tension = options.tension ?? 0.75;
-          const pathData = buildSmoothPath(pts, { closed: true, tension });
-          outer.setAttribute('d', pathData);
-
+          const pts = normalizeLoopPoints(localRaw || []);
+          if (!Array.isArray(pts) || pts.length < 4) {
+            group.style.display = 'none';
+            return;
+          }
           const len = pts.length;
-          if (len < 4) return;
-          const idx = (i) => pts[(i + len) % len];
-          const outerCorner = idx(0);
-          const innerCorner = idx(Math.floor(len / 2));
-          const topMid = mid(idx(1), idx(2));
-          const bottomMid = mid(idx(len - 2), idx(len - 1));
-          const eyeCenter = centroid([outerCorner, innerCorner, topMid, bottomMid]);
-          const horizontal = dist(outerCorner, innerCorner);
-          const vertical = dist(topMid, bottomMid);
-          const scale = options.pupilScale ?? 0.22;
-          const radius = clamp(Math.min(horizontal, vertical * 1.4) * scale, 0.6, 12);
-          const pupilY = eyeCenter.y + vertical * 0.05;
-          const openness = clamp(vertical / Math.max(horizontal, 1), 0, 1);
-          pupil.setAttribute('cx', formatFloat(eyeCenter.x));
-          pupil.setAttribute('cy', formatFloat(pupilY));
-          pupil.setAttribute('r', formatFloat(radius));
-          pupil.style.display = openness > 0.08 ? 'block' : 'none';
-
-          const highlightRadius = radius * (options.highlightScale ?? 0.38);
-          const highlightOffsetX = radius * 0.4;
-          const highlightOffsetY = radius * 0.4;
-          const highlightX = eyeCenter.x - highlightOffsetX;
-          const highlightY = pupilY - highlightOffsetY;
-          highlight.setAttribute('cx', formatFloat(highlightX));
-          highlight.setAttribute('cy', formatFloat(highlightY));
+          const outerCorner = pts[0];
+          const innerCorner = pts[Math.floor(len / 2)];
+          if (!outerCorner || !innerCorner) {
+            group.style.display = 'none';
+            return;
+          }
+          const topCandidates = [pts[1], pts[2]].filter(Boolean);
+          const bottomCandidates = [pts[len - 2], pts[len - 1]].filter(Boolean);
+          const topMid = topCandidates.length ? centroid(topCandidates) : mid(outerCorner, innerCorner);
+          const bottomMid = bottomCandidates.length ? centroid(bottomCandidates) : topMid;
+          const rawCenter = mid(outerCorner, innerCorner);
+          const rawWidth = dist(outerCorner, innerCorner);
+          const verticalSpan = dist(topMid, bottomMid);
+          const baseWidth = state.baseWidth ?? rawWidth;
+          const width = clamp(rawWidth, baseWidth * 0.65, baseWidth * 1.45);
+          const desiredHeight = clamp(verticalSpan * 0.85, width * 0.24, width * 0.48);
+          const baseHeight = state.baseHeight ?? desiredHeight;
+          const clampedHeight = clamp(desiredHeight, baseHeight * 0.7, baseHeight * 1.35);
+          const rawAngle = Math.atan2(innerCorner.y - outerCorner.y, innerCorner.x - outerCorner.x);
+          state.center = EMA(state.center, rawCenter, 0.4);
+          state.width = smoothScalar(state.width, width, 0.32);
+          state.height = smoothScalar(state.height, clampedHeight, 0.32);
+          state.rotation = smoothAngle(state.rotation, rawAngle, 0.28);
+          const center = state.center || rawCenter;
+          const smoothedWidth = state.width || width;
+          const smoothedHeight = state.height || clampedHeight;
+          const openness = clamp(smoothedHeight / Math.max(smoothedWidth, 1), 0, 1);
+          const halfW = smoothedWidth / 2;
+          const halfH = smoothedHeight / 2;
+          const ctrlX = halfW * 0.68;
+          const ctrlY = halfH * 1.15;
+          const pathData = [
+            `M ${formatFloat(-halfW)} 0`,
+            `C ${formatFloat(-halfW + ctrlX)} ${formatFloat(-ctrlY)} ${formatFloat(halfW - ctrlX)} ${formatFloat(-ctrlY)} ${formatFloat(halfW)} 0`,
+            `C ${formatFloat(halfW - ctrlX)} ${formatFloat(ctrlY)} ${formatFloat(-halfW + ctrlX)} ${formatFloat(ctrlY)} ${formatFloat(-halfW)} 0`,
+            'Z'
+          ].join(' ');
+          const lidCtrlY = ctrlY * 0.82;
+          const lidPath = [
+            `M ${formatFloat(-halfW)} 0`,
+            `C ${formatFloat(-halfW + ctrlX * 0.9)} ${formatFloat(-lidCtrlY)} ${formatFloat(halfW - ctrlX * 0.9)} ${formatFloat(-lidCtrlY)} ${formatFloat(halfW)} 0`
+          ].join(' ');
+          sclera.setAttribute('d', pathData);
+          upperLid.setAttribute('d', lidPath);
+          const rotation = state.rotation || rawAngle || 0;
+          group.setAttribute(
+            'transform',
+            `translate(${formatFloat(center.x)} ${formatFloat(center.y)}) rotate(${formatFloat((rotation * 180) / Math.PI)})`
+          );
+          const irisRadius = clamp(smoothedWidth * 0.24, 1.4, smoothedHeight * 0.9);
+          const pupilRadius = clamp(irisRadius * 0.48, 0.8, irisRadius * 0.82);
+          const pupilOffsetY = smoothedHeight * 0.08;
+          iris.setAttribute('cx', '0');
+          iris.setAttribute('cy', formatFloat(pupilOffsetY));
+          iris.setAttribute('r', formatFloat(irisRadius));
+          pupil.setAttribute('cx', '0');
+          pupil.setAttribute('cy', formatFloat(pupilOffsetY + smoothedHeight * 0.02));
+          pupil.setAttribute('r', formatFloat(pupilRadius));
+          const highlightRadius = pupilRadius * 0.48;
+          const highlightOffset = irisRadius * 0.42;
+          highlight.setAttribute('cx', formatFloat(-highlightOffset));
+          highlight.setAttribute('cy', formatFloat(pupilOffsetY - highlightOffset * 0.55));
           highlight.setAttribute('r', formatFloat(highlightRadius));
-          highlight.style.display = openness > 0.18 && radius > 1.1 ? 'block' : 'none';
+          const showInner = openness > 0.1;
+          iris.style.display = showInner ? 'block' : 'none';
+          pupil.style.display = showInner ? 'block' : 'none';
+          highlight.style.display = openness > 0.18 && highlightRadius > 0.6 ? 'block' : 'none';
+          group.style.display = '';
+        }
+      };
+    }
+
+    function createSkinHandler(options = {}) {
+      const group = document.createElementNS(NS, 'g');
+      group.style.display = 'none';
+      appendToFaceOverlay(group, FACE_OVERLAY_SUBGROUP_IDS.skin);
+      if (options.id) group.id = options.id;
+
+      const baseColor = options.baseColor || '#F3AF9D';
+      const jawStrokeColor = options.jawStroke || mixHex(baseColor, '#D98E7E', 0.25);
+      const blushWarm = options.blushTarget || '#FFBFAF';
+      const blushHighlight = options.blushHighlight || '#FFE8DE';
+      const blushFill = options.blushFill || mixHex(mixHex(baseColor, blushWarm, 0.18), blushHighlight, 0.4);
+      const part = options.part || 'jaw';
+
+      let element = null;
+      if (part === 'jaw') {
+        element = document.createElementNS(NS, 'path');
+        element.setAttribute('fill', 'none');
+        element.setAttribute('stroke', jawStrokeColor);
+        element.setAttribute('stroke-width', options.strokeWidth ?? 6.2);
+        element.setAttribute('stroke-linecap', 'round');
+        element.setAttribute('stroke-linejoin', 'round');
+        element.setAttribute('opacity', options.opacity ?? 0.85);
+        element.style.pointerEvents = 'none';
+        group.appendChild(element);
+      } else if (part === 'cheek') {
+        element = document.createElementNS(NS, 'ellipse');
+        element.setAttribute('fill', blushFill);
+        element.setAttribute('stroke', 'none');
+        element.setAttribute('opacity', options.opacity ?? 0.32);
+        element.style.pointerEvents = 'none';
+        group.appendChild(element);
+      } else {
+        element = document.createElementNS(NS, 'g');
+        element.style.pointerEvents = 'none';
+        group.appendChild(element);
+      }
+
+      const state = {
+        base: Array.isArray(options.fallback)
+          ? options.fallback.map((pt) => ({ x: pt.x, y: pt.y }))
+          : null,
+        smooth: null,
+        bounds: null,
+        center: null,
+        rx: null,
+        ry: null,
+        angle: null,
+        baseEyeMouth: null
+      };
+
+      const ensureBounds = (contourPoints) => {
+        if (Array.isArray(contourPoints) && contourPoints.length) {
+          let minX = Number.POSITIVE_INFINITY;
+          let minY = Number.POSITIVE_INFINITY;
+          let maxX = Number.NEGATIVE_INFINITY;
+          let maxY = Number.NEGATIVE_INFINITY;
+          for (const pt of contourPoints) {
+            if (!pt) continue;
+            const { x, y } = pt;
+            if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+            if (x < minX) minX = x;
+            if (y < minY) minY = y;
+            if (x > maxX) maxX = x;
+            if (y > maxY) maxY = y;
+          }
+          if (minX <= maxX && minY <= maxY) {
+            state.bounds = { minX, minY, maxX, maxY };
+          }
+        }
+        return state.bounds;
+      };
+
+      const clampPointToBounds = (pt, bounds, inset = 0) => {
+        if (!bounds || !pt) return pt;
+        return {
+          x: clamp(pt.x, bounds.minX + inset, bounds.maxX - inset),
+          y: clamp(pt.y, bounds.minY + inset, bounds.maxY - inset)
+        };
+      };
+
+      const computeCheekCenter = (pts) => {
+        if (!Array.isArray(pts) || pts.length < 3) return null;
+        const [eye, mouth, jaw] = pts;
+        if (!eye || !mouth || !jaw) return null;
+        const upper = midpoint(eye, mouth) || mouth;
+        const lower = midpoint(mouth, jaw) || mouth;
+        return {
+          x: upper.x * 0.42 + lower.x * 0.58,
+          y: upper.y * 0.28 + lower.y * 0.72
+        };
+      };
+
+      const hide = () => {
+        group.style.display = 'none';
+        if (!element) return;
+        element.style.display = 'none';
+        element.removeAttribute('transform');
+        if (part === 'jaw') {
+          element.setAttribute('d', '');
+        }
+      };
+
+      const updateJaw = (sourcePoints, contourPoints) => {
+        const bounds = ensureBounds(contourPoints);
+        const pts = Array.isArray(sourcePoints) && sourcePoints.length
+          ? sourcePoints
+          : state.base;
+        if (!Array.isArray(pts) || pts.length < 3) {
+          hide();
+          return;
+        }
+        if (!Array.isArray(state.smooth)) {
+          state.smooth = pts.map((pt) => (pt ? { x: pt.x, y: pt.y } : null));
+        }
+        const margin = options.boundsInset ?? 2.4;
+        const smoothed = [];
+        for (let i = 0; i < pts.length; i += 1) {
+          const raw = pts[i];
+          if (!raw) continue;
+          const clamped = clampPointToBounds({ x: raw.x, y: raw.y }, bounds, margin);
+          const prev = state.smooth[i];
+          const next = prev
+            ? {
+              x: prev.x + 0.32 * (clamped.x - prev.x),
+              y: prev.y + 0.32 * (clamped.y - prev.y)
+            }
+            : clamped;
+          state.smooth[i] = next;
+          smoothed.push(next);
+        }
+        if (smoothed.length < 3) {
+          hide();
+          return;
+        }
+        const pathPoints = smoothed.filter(Boolean);
+        if (pathPoints.length < 3) {
+          hide();
+          return;
+        }
+        const pathData = buildSmoothPath(pathPoints, { closed: false, tension: 0.52 });
+        element.setAttribute('d', pathData);
+        element.style.display = '';
+        group.style.display = '';
+      };
+
+      const updateCheek = (sourcePoints, contourPoints) => {
+        const bounds = ensureBounds(contourPoints) || state.bounds;
+        const pts = Array.isArray(sourcePoints) && sourcePoints.length >= 3
+          ? sourcePoints
+          : state.base;
+        if (!Array.isArray(pts) || pts.length < 3) {
+          hide();
+          return;
+        }
+        const [eye, mouth] = pts;
+        const distance = eye && mouth ? dist(eye, mouth) : null;
+        if (!Number.isFinite(distance) || distance < 1e-2) {
+          hide();
+          return;
+        }
+        if (state.baseEyeMouth == null) state.baseEyeMouth = distance;
+        const baseSpan = state.baseEyeMouth || distance;
+        const span = clamp(distance, baseSpan * 0.7, baseSpan * 1.35);
+        const rxTarget = clamp(span * 0.45, 5, bounds ? (bounds.maxX - bounds.minX) * 0.45 : span);
+        const ryTarget = clamp(span * 0.34, 4, bounds ? (bounds.maxY - bounds.minY) * 0.4 : span * 0.6);
+        state.rx = smoothScalar(state.rx, rxTarget, 0.3);
+        state.ry = smoothScalar(state.ry, ryTarget, 0.3);
+        const rawCenter = computeCheekCenter(pts);
+        if (!rawCenter) {
+          hide();
+          return;
+        }
+        const rx = Math.max(state.rx ?? rxTarget, 1);
+        const ry = Math.max(state.ry ?? ryTarget, 1);
+        rawCenter.x += (options.side === 'left' ? 1 : -1) * rx * 0.18;
+        const paddedX = rx * 1.05;
+        const paddedY = ry * 1.05;
+        const clampedCenter = bounds
+          ? {
+            x: clamp(rawCenter.x, bounds.minX + paddedX, bounds.maxX - paddedX),
+            y: clamp(rawCenter.y, bounds.minY + paddedY, bounds.maxY - paddedY)
+          }
+          : rawCenter;
+        state.center = state.center ? EMA(state.center, clampedCenter, 0.34) : clampedCenter;
+        const center = state.center;
+        if (!center) {
+          hide();
+          return;
+        }
+        const angleRaw = mouth && eye ? Math.atan2(mouth.y - eye.y, mouth.x - eye.x) : 0;
+        state.angle = smoothAngle(state.angle, angleRaw, 0.26);
+        element.setAttribute('cx', formatFloat(center.x));
+        element.setAttribute('cy', formatFloat(center.y));
+        element.setAttribute('rx', formatFloat(rx));
+        element.setAttribute('ry', formatFloat(ry));
+        if (Number.isFinite(state.angle ?? angleRaw)) {
+          const deg = ((state.angle ?? angleRaw) * 180) / Math.PI;
+          element.setAttribute('transform', `rotate(${formatFloat(deg)} ${formatFloat(center.x)} ${formatFloat(center.y)})`);
+        } else {
+          element.removeAttribute('transform');
+        }
+        element.style.display = '';
+        group.style.display = '';
+      };
+
+      return {
+        el: group,
+        setBase(points) {
+          if (!Array.isArray(points)) return;
+          state.base = points.map((pt) => ({ x: pt.x, y: pt.y }));
+          if (part === 'jaw') {
+            state.smooth = state.base.map((pt) => (pt ? { x: pt.x, y: pt.y } : null));
+          } else if (part === 'cheek') {
+            if (state.base.length >= 2) {
+              const [eye, mouth] = state.base;
+              const baseDist = eye && mouth ? dist(eye, mouth) : null;
+              if (Number.isFinite(baseDist)) state.baseEyeMouth = baseDist;
+            }
+            const baseCenter = computeCheekCenter(state.base);
+            if (baseCenter) state.center = { ...baseCenter };
+          }
+        },
+        update({ points, fallback, visible = true, contourFallback, contourTarget }) {
+          if (!visible) {
+            hide();
+            return;
+          }
+          const contourPoints = contourTarget?.length ? contourTarget : contourFallback;
+          const source = Array.isArray(points) && points.length ? points : fallback;
+          if (part === 'jaw') {
+            updateJaw(source, contourPoints);
+          } else if (part === 'cheek') {
+            updateCheek(source, contourPoints);
+          } else {
+            hide();
+          }
         }
       };
     }
@@ -2093,39 +3059,208 @@
       const group = template && template.tagName?.toLowerCase() === 'g'
         ? template
         : document.createElementNS(NS, 'g');
+      const templatePath = template ? template.querySelector('path') : null;
       group.innerHTML = '';
-      appendToFaceOverlay(group);
+      appendToFaceOverlay(group, FACE_OVERLAY_SUBGROUP_IDS.nose);
       if (options.id) group.id = options.id;
 
       const bridge = document.createElementNS(NS, 'path');
-      applyTemplateStyles(template, bridge, ['stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin'], {
+      applyTemplateStyles(templatePath, bridge, ['stroke', 'stroke-width'], {
         stroke: options.stroke || '#2C323A',
-        'stroke-width': options.bridgeWidth ?? 3,
-        'stroke-linecap': 'round',
-        'stroke-linejoin': 'round'
+        'stroke-width': options.bridgeWidth ?? 2.6
       });
       bridge.setAttribute('fill', 'none');
+      bridge.setAttribute('stroke-linecap', 'round');
+      bridge.setAttribute('stroke-linejoin', 'round');
       bridge.style.display = 'none';
       group.appendChild(bridge);
 
-      const base = document.createElementNS(NS, 'path');
-      applyTemplateStyles(template, base, ['stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin'], {
+      const tip = document.createElementNS(NS, 'path');
+      applyTemplateStyles(templatePath, tip, ['stroke', 'stroke-width'], {
         stroke: options.stroke || '#2C323A',
-        'stroke-width': options.baseWidth ?? 3.8,
-        'stroke-linecap': 'round',
-        'stroke-linejoin': 'round'
+        'stroke-width': options.tipStrokeWidth ?? 2.8
       });
-      base.setAttribute('fill', 'none');
-      base.style.display = 'none';
-      group.appendChild(base);
+      tip.setAttribute('fill', 'none');
+      tip.setAttribute('stroke-linecap', 'round');
+      tip.setAttribute('stroke-linejoin', 'round');
+      tip.style.display = 'none';
+      group.appendChild(tip);
+
+      const nostrilLeft = document.createElementNS(NS, 'path');
+      const nostrilRight = document.createElementNS(NS, 'path');
+      [nostrilLeft, nostrilRight].forEach((nostril) => {
+        applyTemplateStyles(templatePath, nostril, ['stroke', 'stroke-width'], {
+          stroke: options.stroke || '#2C323A',
+          'stroke-width': options.nostrilStrokeWidth ?? 2.2
+        });
+        nostril.setAttribute('fill', 'none');
+        nostril.setAttribute('stroke-linecap', 'round');
+        nostril.setAttribute('stroke-linejoin', 'round');
+        nostril.style.display = 'none';
+        group.appendChild(nostril);
+      });
 
       const initialPart = options.part || 'default';
       const state = {
-        base: {}
+        base: {},
+        parts: {
+          bridge: null,
+          base: null
+        },
+        center: null,
+        rotation: null,
+        bridgeHeight: null,
+        width: null,
+        tipWidth: null,
+        tipHeight: null,
+        nostrilGap: null,
+        nostrilWidth: null,
+        baseWidth: null,
+        baseBridge: null
       };
       if (Array.isArray(options.fallback)) {
         state.base[initialPart] = options.fallback.map((pt) => ({ x: pt.x, y: pt.y }));
       }
+
+      const refresh = () => {
+        const bridgeData = state.parts.bridge;
+        const baseData = state.parts.base;
+        const bridgePoints = bridgeData?.points || null;
+        const basePoints = baseData?.points || null;
+
+        let rawCenter = null;
+        if (basePoints && basePoints.length >= 3 && basePoints[2]) {
+          rawCenter = basePoints[2];
+        } else if (bridgePoints && bridgePoints.length) {
+          rawCenter = bridgePoints[bridgePoints.length - 1];
+        }
+
+        let axisLen = null;
+        if (bridgePoints && bridgePoints.length >= 2) {
+          const tipPt = bridgePoints[bridgePoints.length - 1];
+          const topCandidates = bridgePoints.slice(0, -1).filter(Boolean);
+          const topPt = topCandidates.length ? centroid(topCandidates) : bridgePoints[0];
+          if (tipPt && topPt) {
+            const axisVec = { x: tipPt.x - topPt.x, y: tipPt.y - topPt.y };
+            const length = Math.hypot(axisVec.x, axisVec.y);
+            if (Number.isFinite(length) && length > 1e-3) {
+              axisLen = length;
+              if (state.baseBridge == null) state.baseBridge = length;
+              const rawRotation = Math.atan2(axisVec.y, axisVec.x) - Math.PI / 2;
+              state.rotation = smoothAngle(state.rotation, rawRotation, 0.32);
+              const minBridge = (state.baseBridge ?? length) * 0.65;
+              const maxBridge = (state.baseBridge ?? length) * 1.35;
+              const bridgeTarget = clamp(length, minBridge, maxBridge);
+              state.bridgeHeight = smoothScalar(state.bridgeHeight, bridgeTarget, 0.32);
+            }
+          }
+        }
+
+        if (rawCenter) {
+          state.center = state.center ? EMA(state.center, rawCenter, 0.35) : rawCenter;
+        }
+
+        if (basePoints && basePoints.length >= 5) {
+          const rightOuter = basePoints[0];
+          const rightInner = basePoints[1];
+          const leftInner = basePoints[3];
+          const leftOuter = basePoints[4];
+          const rawWidth = dist(rightOuter, leftOuter);
+          if (Number.isFinite(rawWidth) && rawWidth > 1e-3) {
+            if (state.baseWidth == null) state.baseWidth = rawWidth;
+            const minWidth = (state.baseWidth ?? rawWidth) * 0.8;
+            const maxWidth = (state.baseWidth ?? rawWidth) * 1.3;
+            const widthTarget = clamp(rawWidth, minWidth, maxWidth);
+            state.width = smoothScalar(state.width, widthTarget, 0.28);
+            const nostrilSpanRaw = dist(rightInner, leftInner);
+            const nostrilSpan = clamp(nostrilSpanRaw, widthTarget * 0.3, widthTarget * 0.75);
+            state.nostrilGap = smoothScalar(state.nostrilGap, nostrilSpan, 0.3);
+            const nostrilWidthRaw = (dist(rightOuter, rightInner) + dist(leftOuter, leftInner)) / 2;
+            const nostrilWidthTarget = clamp(nostrilWidthRaw, widthTarget * 0.12, widthTarget * 0.28);
+            state.nostrilWidth = smoothScalar(state.nostrilWidth, nostrilWidthTarget, 0.3);
+            const tipSpan = clamp(widthTarget * 0.55, widthTarget * 0.38, widthTarget * 0.7);
+            state.tipWidth = smoothScalar(state.tipWidth, tipSpan, 0.28);
+            const referenceBridge = state.bridgeHeight ?? axisLen ?? state.baseBridge ?? widthTarget * 1.1;
+            const tipHeightTarget = clamp(referenceBridge * 0.28, 4, widthTarget * 0.7);
+            state.tipHeight = smoothScalar(state.tipHeight, tipHeightTarget, 0.3);
+          }
+        }
+
+        const center = state.center || rawCenter;
+        let rotation = state.rotation ?? 0;
+        if (!center || !Number.isFinite(rotation)) {
+          group.style.display = 'none';
+          return;
+        }
+
+        const widthVal = state.width ?? state.baseWidth ?? 14;
+        const halfWidth = widthVal / 2;
+        const tipWidth = clamp(state.tipWidth ?? widthVal * 0.5, widthVal * 0.3, widthVal * 0.72);
+        const tipHeight = clamp(state.tipHeight ?? (state.bridgeHeight || widthVal) * 0.26, widthVal * 0.12, widthVal * 0.78);
+        const bridgeHeight = clamp(state.bridgeHeight ?? (axisLen || widthVal) * 0.9, tipHeight * 1.3, (state.baseBridge ?? widthVal * 1.4) * 1.4);
+        const nostrilGap = clamp(state.nostrilGap ?? widthVal * 0.42, widthVal * 0.24, widthVal * 0.78);
+        const nostrilHalf = nostrilGap / 2;
+        const nostrilWidth = clamp(state.nostrilWidth ?? widthVal * 0.18, widthVal * 0.1, widthVal * 0.32);
+        const nostrilRise = Math.max(nostrilWidth * 0.65, tipHeight * 0.4);
+
+        group.setAttribute(
+          'transform',
+          `translate(${formatFloat(center.x)} ${formatFloat(center.y)}) rotate(${formatFloat((rotation * 180) / Math.PI)})`
+        );
+
+        let anyVisible = false;
+        if (bridgePoints && bridgeHeight > 0.6) {
+          const blend = Math.min(tipHeight * 0.7, bridgeHeight * 0.45);
+          const sway = tipWidth * 0.08;
+          const bridgePath = [
+            `M ${formatFloat(-sway)} ${formatFloat(-bridgeHeight)}`,
+            `Q 0 ${formatFloat(-bridgeHeight + blend * 0.35)} 0 ${formatFloat(-blend)}`,
+            `Q 0 ${formatFloat(-blend * 0.35)} 0 ${formatFloat(-Math.max(blend * 0.12, 0.4))}`
+          ].join(' ');
+          bridge.setAttribute('d', bridgePath);
+          bridge.style.display = '';
+          anyVisible = true;
+        } else {
+          bridge.style.display = 'none';
+        }
+
+        if (basePoints && tipWidth > 0.6 && tipHeight > 0.6) {
+          const halfTip = tipWidth / 2;
+          const tipPath = [
+            `M ${formatFloat(-halfTip)} 0`,
+            `Q ${formatFloat(-halfTip * 0.4)} ${formatFloat(tipHeight * 0.28)} 0 ${formatFloat(tipHeight)}`,
+            `Q ${formatFloat(halfTip * 0.4)} ${formatFloat(tipHeight * 0.28)} ${formatFloat(halfTip)} 0`
+          ].join(' ');
+          tip.setAttribute('d', tipPath);
+          tip.style.display = '';
+          anyVisible = true;
+        } else {
+          tip.style.display = 'none';
+        }
+
+        if (basePoints && nostrilHalf > 0.3 && nostrilWidth > 0.3) {
+          const nostrilY = tipHeight * 0.55;
+          const buildNostril = (dir) => {
+            const cx = dir * nostrilHalf;
+            const startX = cx - nostrilWidth / 2;
+            const endX = cx + nostrilWidth / 2;
+            return [
+              `M ${formatFloat(startX)} ${formatFloat(nostrilY)}`,
+              `Q ${formatFloat(cx)} ${formatFloat(nostrilY + nostrilRise)} ${formatFloat(endX)} ${formatFloat(nostrilY)}`
+            ].join(' ');
+          };
+          nostrilLeft.setAttribute('d', buildNostril(-1));
+          nostrilRight.setAttribute('d', buildNostril(1));
+          nostrilLeft.style.display = '';
+          nostrilRight.style.display = '';
+          anyVisible = true;
+        } else {
+          nostrilLeft.style.display = 'none';
+          nostrilRight.style.display = 'none';
+        }
+
+        group.style.display = anyVisible ? '' : 'none';
+      };
 
       return {
         el: group,
@@ -2135,23 +3270,63 @@
             state.base[key] = points.map((pt) => ({ x: pt.x, y: pt.y }));
           }
         },
-        update({ points, part, inverseMatrix }) {
-          const key = part || options.part || 'default';
-          const ptsGlobal = Array.isArray(points) && points.length >= 2 ? points : state.base[key];
-          if (!ptsGlobal || ptsGlobal.length < 2) return;
-          const local = inverseMatrix ? mapPoints(ptsGlobal, inverseMatrix) : ptsGlobal;
-          const pts = Array.isArray(local) && local.length >= 2 ? local : state.base[key];
-          if (!pts || pts.length < 2) return;
-          // Apply the template's stroke to a freshly generated curve that follows the live guide points in head space.
-          const tension = part === 'base' ? options.baseTension ?? 0.55 : options.bridgeTension ?? 0.35;
-          const data = buildSmoothPath(pts, { closed: false, tension });
-          if (part === 'base') {
-            base.setAttribute('d', data);
-            base.style.display = 'block';
-          } else {
-            bridge.setAttribute('d', data);
-            bridge.style.display = 'block';
+        update({ points, part, inverseMatrix, visible = true, ids = [] }) {
+          const mode = part || options.part || 'default';
+          const assignPart = (value) => {
+            state.parts[mode === 'base' ? 'base' : 'bridge'] = value;
+          };
+
+          if (!visible) {
+            assignPart(null);
+            if (mode === 'base') {
+              tip.style.display = 'none';
+              nostrilLeft.style.display = 'none';
+              nostrilRight.style.display = 'none';
+            } else {
+              bridge.style.display = 'none';
+            }
+            if (!state.parts.base && !state.parts.bridge) {
+              group.style.display = 'none';
+            } else {
+              refresh();
+            }
+            return;
           }
+
+          const sourcePoints = Array.isArray(points) && points.length ? points : state.base[mode];
+          if (!Array.isArray(sourcePoints) || !sourcePoints.length) {
+            assignPart(null);
+            if (mode === 'base') {
+              tip.style.display = 'none';
+              nostrilLeft.style.display = 'none';
+              nostrilRight.style.display = 'none';
+            } else {
+              bridge.style.display = 'none';
+            }
+            if (!state.parts.base && !state.parts.bridge) group.style.display = 'none';
+            return;
+          }
+
+          const mapped = inverseMatrix ? mapPoints(sourcePoints, inverseMatrix) : sourcePoints;
+          if (!Array.isArray(mapped) || !mapped.length) {
+            assignPart(null);
+            if (mode === 'base') {
+              tip.style.display = 'none';
+              nostrilLeft.style.display = 'none';
+              nostrilRight.style.display = 'none';
+            } else {
+              bridge.style.display = 'none';
+            }
+            if (!state.parts.base && !state.parts.bridge) group.style.display = 'none';
+            return;
+          }
+
+          const processed = mapped.map((pt) => ({ x: pt.x, y: pt.y }));
+          assignPart({
+            points: processed,
+            ids: Array.isArray(ids) ? ids.slice() : []
+          });
+          refresh();
         }
       };
     }
@@ -2163,34 +3338,206 @@
         : document.createElementNS(NS, 'g');
       const templatePath = template ? template.querySelector('path') : null;
       group.innerHTML = '';
-      appendToFaceOverlay(group);
+      appendToFaceOverlay(group, FACE_OVERLAY_SUBGROUP_IDS.mouth);
       if (options.id) group.id = options.id;
 
       const outer = document.createElementNS(NS, 'path');
-      applyTemplateStyles(templatePath, outer, ['fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin'], {
-        fill: options.outerFill || '#DF7977',
-        stroke: options.outerStroke || '#B45656',
-        'stroke-width': options.outerStrokeWidth ?? 4,
-        'stroke-linecap': 'round',
-        'stroke-linejoin': 'round'
+      applyTemplateStyles(templatePath, outer, ['fill', 'stroke', 'stroke-width'], {
+        fill: options.outerFill || '#F1B1AC',
+        stroke: options.outerStroke || '#C97877',
+        'stroke-width': options.outerStrokeWidth ?? 2.6
       });
+      outer.setAttribute('stroke-linecap', 'round');
+      outer.setAttribute('stroke-linejoin', 'round');
       group.appendChild(outer);
 
       const inner = document.createElementNS(NS, 'path');
-      inner.setAttribute('fill', options.innerFill || '#B24848');
+      inner.setAttribute('fill', options.innerFill || '#8F4A49');
       inner.setAttribute('stroke', 'none');
-      inner.style.opacity = options.innerOpacity ?? 0.85;
+      inner.style.opacity = options.innerOpacity ?? 0.82;
       inner.style.display = 'none';
       group.appendChild(inner);
 
-      const baseStroke = parseFloat(outer.getAttribute('stroke-width')) || (options.outerStrokeWidth ?? 4);
       const initialPart = options.part || 'default';
       const state = {
-        base: {}
+        base: {},
+        parts: {
+          outer: null,
+          inner: null
+        },
+        center: null,
+        rotation: null,
+        width: null,
+        upperHeight: null,
+        lowerHeight: null,
+        opening: null,
+        innerWidth: null,
+        baseWidth: null,
+        baseUpper: null,
+        baseLower: null,
+        baseGap: null
       };
       if (Array.isArray(options.fallback)) {
         state.base[initialPart] = options.fallback.map((pt) => ({ x: pt.x, y: pt.y }));
       }
+
+      const refresh = () => {
+        const outerData = state.parts.outer;
+        const innerData = state.parts.inner;
+        const outerPoints = outerData?.points || null;
+        const outerIds = outerData?.ids || [];
+        if (!outerPoints || outerPoints.length < 4) {
+          group.style.display = 'none';
+          inner.style.display = 'none';
+          return;
+        }
+
+        const named = {};
+        outerIds.forEach((id, idx) => {
+          named[id] = outerPoints[idx];
+        });
+
+        const rightCorner = named.rightMouthCorner || outerPoints[0];
+        const leftCorner = named.leftMouthCorner || outerPoints.find((pt, idx) => outerIds[idx] === 'leftMouthCorner') || outerPoints[outerPoints.length - 1];
+        if (!rightCorner || !leftCorner) {
+          group.style.display = 'none';
+          inner.style.display = 'none';
+          return;
+        }
+
+        const widthVec = { x: leftCorner.x - rightCorner.x, y: leftCorner.y - rightCorner.y };
+        const rawWidth = Math.hypot(widthVec.x, widthVec.y);
+        if (!Number.isFinite(rawWidth) || rawWidth < 1e-3) {
+          group.style.display = 'none';
+          inner.style.display = 'none';
+          return;
+        }
+
+        const widthUnit = { x: widthVec.x / rawWidth, y: widthVec.y / rawWidth };
+        const perpUnit = { x: -widthUnit.y, y: widthUnit.x };
+        const mid = {
+          x: (leftCorner.x + rightCorner.x) / 2,
+          y: (leftCorner.y + rightCorner.y) / 2
+        };
+        state.center = state.center ? EMA(state.center, mid, 0.4) : mid;
+        if (state.baseWidth == null) state.baseWidth = rawWidth;
+        const minWidth = (state.baseWidth ?? rawWidth) * 0.75;
+        const maxWidth = (state.baseWidth ?? rawWidth) * 1.35;
+        const widthTarget = clamp(rawWidth, minWidth, maxWidth);
+        state.width = smoothScalar(state.width, widthTarget, 0.3);
+        const rotationRaw = Math.atan2(widthUnit.y, widthUnit.x);
+        state.rotation = smoothAngle(state.rotation, rotationRaw, 0.28);
+
+        const center = state.center || mid;
+        const project = (pt) => {
+          const dx = pt.x - center.x;
+          const dy = pt.y - center.y;
+          return {
+            x: dx * widthUnit.x + dy * widthUnit.y,
+            y: dx * perpUnit.x + dy * perpUnit.y
+          };
+        };
+
+        const upperOuter = named.upperLipTopMid ? project(named.upperLipTopMid) : null;
+        const lowerOuter = named.lowerLipBottomMid ? project(named.lowerLipBottomMid) : null;
+        if (upperOuter) {
+          const upperTarget = clamp(-upperOuter.y, widthTarget * 0.08, widthTarget * 0.35);
+          state.upperHeight = smoothScalar(state.upperHeight, upperTarget, 0.32);
+          if (state.baseUpper == null) state.baseUpper = upperTarget;
+        } else if (state.baseUpper != null) {
+          state.upperHeight = smoothScalar(state.upperHeight, state.baseUpper, 0.2);
+        }
+        if (lowerOuter) {
+          const lowerTarget = clamp(lowerOuter.y, widthTarget * 0.1, widthTarget * 0.42);
+          state.lowerHeight = smoothScalar(state.lowerHeight, lowerTarget, 0.32);
+          if (state.baseLower == null) state.baseLower = lowerTarget;
+        } else if (state.baseLower != null) {
+          state.lowerHeight = smoothScalar(state.lowerHeight, state.baseLower, 0.2);
+        }
+
+        let gapTarget = null;
+        let innerWidthTarget = null;
+        if (innerData?.points?.length) {
+          const innerNamed = {};
+          innerData.ids.forEach((id, idx) => {
+            innerNamed[id] = innerData.points[idx];
+          });
+          const upperInner = innerNamed.upperLipBottomMid ? project(innerNamed.upperLipBottomMid) : null;
+          const lowerInner = innerNamed.lowerLipTopMid ? project(innerNamed.lowerLipTopMid) : null;
+          if (upperInner && lowerInner) {
+            const rawGap = Math.max(lowerInner.y - upperInner.y, 0);
+            if (state.baseGap == null) state.baseGap = rawGap;
+            const minGap = Math.max((state.baseGap ?? rawGap) * 0.25, widthTarget * 0.02);
+            const maxGap = Math.max((state.baseGap ?? rawGap) * 2.2, widthTarget * 0.55);
+            gapTarget = clamp(rawGap, minGap, maxGap);
+          }
+          const innerLeft = innerNamed.leftMouthCorner ? project(innerNamed.leftMouthCorner) : null;
+          const innerRight = innerNamed.rightMouthCorner ? project(innerNamed.rightMouthCorner) : null;
+          if (innerLeft && innerRight) {
+            const rawInnerWidth = Math.abs(innerRight.x - innerLeft.x);
+            innerWidthTarget = clamp(rawInnerWidth, widthTarget * 0.5, widthTarget * 0.9);
+          }
+        }
+
+        if (gapTarget == null) {
+          const baseGap = state.baseGap ?? (state.baseLower ?? widthTarget * 0.22) * 0.4;
+          gapTarget = clamp(baseGap, widthTarget * 0.015, widthTarget * 0.45);
+        }
+        state.opening = smoothScalar(state.opening, gapTarget, 0.3);
+        if (innerWidthTarget != null) {
+          state.innerWidth = smoothScalar(state.innerWidth, innerWidthTarget, 0.3);
+        } else if (state.innerWidth == null) {
+          state.innerWidth = widthTarget * 0.68;
+        }
+
+        const rotation = state.rotation ?? rotationRaw;
+        if (!center || !Number.isFinite(rotation)) {
+          group.style.display = 'none';
+          inner.style.display = 'none';
+          return;
+        }
+
+        const widthVal = state.width ?? widthTarget;
+        const halfWidth = widthVal / 2;
+        const upperHeight = clamp(state.upperHeight ?? (state.baseUpper ?? widthVal * 0.2), widthVal * 0.08, widthVal * 0.36);
+        const lowerHeight = clamp(state.lowerHeight ?? (state.baseLower ?? widthVal * 0.24), widthVal * 0.1, widthVal * 0.45);
+        const cupidWidth = clamp(widthVal * 0.42, widthVal * 0.3, widthVal * 0.58);
+        const opening = Math.max(state.opening ?? 0, 0);
+        const innerHalf = opening / 2;
+        const innerSpan = clamp(state.innerWidth ?? widthVal * 0.68, widthVal * 0.4, widthVal * 0.92);
+
+        group.setAttribute(
+          'transform',
+          `translate(${formatFloat(center.x)} ${formatFloat(center.y)}) rotate(${formatFloat((rotation * 180) / Math.PI)})`
+        );
+        group.style.display = '';
+
+        const outerPath = [
+          `M ${formatFloat(-halfWidth)} 0`,
+          `C ${formatFloat(-halfWidth * 0.55)} ${formatFloat(-upperHeight * 0.15)} ${formatFloat(-cupidWidth)} ${formatFloat(-upperHeight)} 0 ${formatFloat(-upperHeight)}`,
+          `C ${formatFloat(cupidWidth)} ${formatFloat(-upperHeight)} ${formatFloat(halfWidth * 0.55)} ${formatFloat(-upperHeight * 0.15)} ${formatFloat(halfWidth)} 0`,
+          `C ${formatFloat(halfWidth * 0.55)} ${formatFloat(lowerHeight * 0.22)} ${formatFloat(cupidWidth)} ${formatFloat(lowerHeight)} 0 ${formatFloat(lowerHeight)}`,
+          `C ${formatFloat(-cupidWidth)} ${formatFloat(lowerHeight)} ${formatFloat(-halfWidth * 0.55)} ${formatFloat(lowerHeight * 0.22)} ${formatFloat(-halfWidth)} 0`,
+          'Z'
+        ].join(' ');
+        outer.setAttribute('d', outerPath);
+
+        if (opening > widthVal * 0.02) {
+          const innerHalfWidth = Math.max(innerSpan / 2, halfWidth * 0.42);
+          const cappedHalf = Math.max(innerHalf, widthVal * 0.012);
+          const innerPath = [
+            `M ${formatFloat(-innerHalfWidth)} ${formatFloat(-cappedHalf)}`,
+            `Q 0 ${formatFloat(-cappedHalf * 0.45)} ${formatFloat(innerHalfWidth)} ${formatFloat(-cappedHalf)}`,
+            `Q ${formatFloat(innerHalfWidth * 0.7)} ${formatFloat(cappedHalf)} ${formatFloat(innerHalfWidth)} ${formatFloat(cappedHalf)}`,
+            `Q 0 ${formatFloat(cappedHalf * 0.45)} ${formatFloat(-innerHalfWidth)} ${formatFloat(cappedHalf)}`,
+            'Z'
+          ].join(' ');
+          inner.setAttribute('d', innerPath);
+          inner.style.display = '';
+        } else {
+          inner.style.display = 'none';
+        }
+      };
 
       return {
         el: group,
@@ -2200,38 +3547,60 @@
             state.base[key] = points.map((pt) => ({ x: pt.x, y: pt.y }));
           }
         },
-        update({ points, part, inverseMatrix }) {
-          const key = part || options.part || 'default';
-          const ptsRaw = Array.isArray(points) && points.length ? points : state.base[key];
-          if (!Array.isArray(ptsRaw) || !ptsRaw.length) return;
-          const localRaw = inverseMatrix ? mapPoints(ptsRaw, inverseMatrix) : ptsRaw;
-          const working = Array.isArray(localRaw) && localRaw.length ? localRaw : state.base[key];
-          const pts = normalizeLoopPoints(working || []);
-          if (!Array.isArray(pts) || pts.length < 3) return;
-          // Use the template colours on a path rebuilt from the pose data in head-local coordinates.
-          const tension = part === 'outer' ? options.outerTension ?? 0.6 : options.innerTension ?? 0.58;
-          const data = buildSmoothPath(pts, { closed: true, tension });
-          if (part === 'outer') {
-            outer.setAttribute('d', data);
-            const half = Math.floor(pts.length / 2);
-            const upperMid = centroid(pts.slice(0, half));
-            const lowerMid = centroid(pts.slice(half));
-            const openness = dist(upperMid, lowerMid);
-            const width = Math.max(dist(pts[0], pts[half]), 1);
-            const strokeWidth = clamp((openness / Math.max(width, 1)) * baseStroke + 2, 3, 6);
-            outer.setAttribute('stroke-width', formatFloat(strokeWidth));
-          } else {
-            inner.setAttribute('d', data);
-            const area = polygonArea(pts);
-            inner.style.display = area > (options.innerAreaThreshold ?? 8) ? 'block' : 'none';
+        update({ points, part, inverseMatrix, visible = true, ids = [] }) {
+          const mode = (part || options.part) === 'inner' ? 'inner' : 'outer';
+          const assignPart = (value) => {
+            state.parts[mode] = value;
+          };
+
+          if (!visible) {
+            assignPart(null);
+            if (mode === 'inner') {
+              inner.style.display = 'none';
+            } else {
+              group.style.display = 'none';
+            }
+            refresh();
+            return;
           }
+
+          const source = Array.isArray(points) && points.length ? points : state.base[mode];
+          if (!Array.isArray(source) || !source.length) {
+            assignPart(null);
+            if (mode === 'inner') {
+              inner.style.display = 'none';
+            } else {
+              group.style.display = 'none';
+            }
+            return;
+          }
+
+          const mapped = inverseMatrix ? mapPoints(source, inverseMatrix) : source;
+          if (!Array.isArray(mapped) || !mapped.length) {
+            assignPart(null);
+            if (mode === 'inner') {
+              inner.style.display = 'none';
+            } else {
+              group.style.display = 'none';
+            }
+            return;
+          }
+
+          const processed = mapped.map((pt) => ({ x: pt.x, y: pt.y }));
+          assignPart({
+            points: processed,
+            ids: Array.isArray(ids) ? ids.slice() : []
+          });
+          refresh();
         }
       };
     }
 
     const FACE_FEATURE_FACTORIES = {
+      hair: createHairHandler,
       brow: createBrowHandler,
       eye: createEyeHandler,
+      skin: createSkinHandler,
       nose: createNoseHandler,
       mouth: createMouthHandler
     };
@@ -2496,6 +3865,8 @@
       for (const segment of segments.face) {
         const { debug, handler, handlerEl, featurePart, ids, fallback, isContour, anchorIndex } = segment;
         const points = [];
+        let missingPosePoint = false;
+        let aborted = false;
         for (let i = 0; i < ids.length; i += 1) {
           const id = ids[i];
           const raw = safeKP(kp, id);
@@ -2506,16 +3877,17 @@
               continue;
             }
           }
+          missingPosePoint = true;
           if (fallback && fallback[i]) {
             points.push(fallback[i]);
-          } else {
-            points.length = 0;
-            break;
+            continue;
           }
+          aborted = true;
+          break;
         }
 
         let target = null;
-        if (points.length === ids.length) {
+        if (!aborted && points.length === ids.length) {
           placePolyline(debug, points);
           target = points;
         } else if (fallback && fallback.length) {
@@ -2530,9 +3902,12 @@
           contourAnchorIndex = typeof anchorIndex === 'number' ? anchorIndex : -1;
         }
 
+        const hasAllPoints = !missingPosePoint && !aborted && points.length === ids.length;
         pendingUpdates.push({
           segment,
-          target
+          target: hasAllPoints ? points : null,
+          fallback,
+          visible: hasAllPoints
         });
       }
       if (headMatrix && contourFallback && contourTarget && headAnchorBase) {
@@ -2581,19 +3956,21 @@
       const headInverse = headMatrix ? invertMatrix(headMatrix) : null;
 
       for (const update of pendingUpdates) {
-        const { segment, target } = update;
-        const { handler, handlerEl, featurePart, fallback, ids } = segment;
-        if (!handler || !target) continue;
+        const { segment, target, fallback, visible } = update;
+        const { handler, handlerEl, featurePart, ids } = segment;
+        if (!handler) continue;
+        const element = handlerEl || (handler && handler.el) || null;
         handler.update({
           points: target,
           part: featurePart,
           fallback,
           ids,
-          element: handlerEl || handler.el || null,
+          element,
           matrix: headMatrix,
           inverseMatrix: headInverse,
           contourFallback,
-          contourTarget
+          contourTarget,
+          visible
         });
       }
 
@@ -2799,32 +4176,21 @@
         const bodyGroup = svgEl.getElementById('puppet_body');
         if (bodyGroup) bodyTargets.push(bodyGroup);
         applyBodyTransform(null);
-        faceOverlayLayer = svgEl.getElementById('face_overlay_layer');
+        faceOverlayLayer = svgEl.getElementById(FACE_OVERLAY_ID) || svgEl.getElementById(LEGACY_FACE_OVERLAY_ID);
         if (!faceOverlayLayer) {
           faceOverlayLayer = document.createElementNS(NS, 'g');
-          faceOverlayLayer.id = 'face_overlay_layer';
         }
+        faceOverlayLayer.id = FACE_OVERLAY_ID;
+        faceOverlayLayer.setAttribute('aria-label', 'face overlay');
         faceOverlayLayer.style.pointerEvents = 'none';
-
-        if (headRig) {
-          const reference = headFront && headFront.parentNode === headRig ? headFront : null;
-          if (reference) {
-            if (faceOverlayLayer.parentNode !== headRig || faceOverlayLayer.nextSibling !== reference) {
-              headRig.insertBefore(faceOverlayLayer, reference);
-            }
-          } else if (faceOverlayLayer.parentNode !== headRig) {
-            headRig.appendChild(faceOverlayLayer);
-          }
-        } else if (headFront && headFront.parentNode) {
-          if (faceOverlayLayer.parentNode !== headFront.parentNode || faceOverlayLayer.nextSibling !== headFront) {
-            headFront.parentNode.insertBefore(faceOverlayLayer, headFront);
-          }
-        } else if (headBase && headBase.parentNode) {
-          if (faceOverlayLayer.parentNode !== headBase.parentNode) {
-            headBase.parentNode.insertBefore(faceOverlayLayer, headBase.nextSibling);
-          }
-        } else if (!faceOverlayLayer.parentNode && svgEl) {
+        faceOverlayGroups.clear();
+        if (!faceOverlayLayer.parentNode) {
           svgEl.appendChild(faceOverlayLayer);
+        }
+        ensureFaceOverlayGroups();
+        positionFaceOverlayLayer();
+        if (faceOverlayLayer && !headTargets.includes(faceOverlayLayer)) {
+          headTargets.push(faceOverlayLayer);
         }
         faceFeatureRegistry.clear();
         headAnchorBase = null;
@@ -2839,6 +4205,7 @@
         armPaths.left.setAttribute('stroke-linecap', 'round');
         armPaths.left.setAttribute('stroke-linejoin', 'round');
         armPaths.left.setAttribute('stroke-opacity', '0.95');
+        armPaths.left.setAttribute('data-debug-line', 'true');
         svgEl.appendChild(armPaths.left);
 
         armPaths.right = document.createElementNS(NS, 'path');
@@ -2849,6 +4216,7 @@
         armPaths.right.setAttribute('stroke-linecap', 'round');
         armPaths.right.setAttribute('stroke-linejoin', 'round');
         armPaths.right.setAttribute('stroke-opacity', '0.95');
+        armPaths.right.setAttribute('data-debug-line', 'true');
         svgEl.appendChild(armPaths.right);
         segments.left.upper = seg('L_upper');
         segments.left.lower = seg('L_lower');
@@ -2871,6 +4239,58 @@
               'leftJaw1', 'leftJaw0', 'leftTop1', 'leftTop0', 'topMid'
             ],
             width: 8
+          },
+          {
+            id: 'face_hair_overlay',
+            ids: ['rightJaw6', 'rightJaw4', 'jawMid', 'leftJaw4', 'leftJaw6', 'rightBrow2', 'leftBrow2'],
+            width: 6,
+            feature: {
+              type: 'hair',
+              id: 'hair_feature',
+              sharedKey: 'hair'
+            }
+          },
+          {
+            id: 'face_skin_jaw',
+            ids: [
+              'rightJaw0', 'rightJaw1', 'rightJaw2', 'rightJaw3', 'rightJaw4', 'rightJaw5',
+              'rightJaw6', 'rightJaw7', 'jawMid', 'leftJaw7', 'leftJaw6', 'leftJaw5',
+              'leftJaw4', 'leftJaw3', 'leftJaw2', 'leftJaw1', 'leftJaw0'
+            ],
+            width: 5,
+            feature: {
+              type: 'skin',
+              id: 'skin_jaw_feature',
+              sharedKey: 'skin_jaw',
+              part: 'jaw',
+              baseColor: '#F3AF9D'
+            }
+          },
+          {
+            id: 'face_skin_cheek_right',
+            ids: ['rightEye4', 'rightMouthCorner', 'rightJaw4'],
+            width: 4,
+            feature: {
+              type: 'skin',
+              id: 'skin_cheek_right',
+              sharedKey: 'skin_cheek_right',
+              part: 'cheek',
+              side: 'right',
+              baseColor: '#F3AF9D'
+            }
+          },
+          {
+            id: 'face_skin_cheek_left',
+            ids: ['leftEye4', 'leftMouthCorner', 'leftJaw4'],
+            width: 4,
+            feature: {
+              type: 'skin',
+              id: 'skin_cheek_left',
+              sharedKey: 'skin_cheek_left',
+              part: 'cheek',
+              side: 'left',
+              baseColor: '#F3AF9D'
+            }
           },
           {
             id: 'face_brow_right',
@@ -3059,6 +4479,7 @@
         });
 
         updateVisibility();
+        positionFaceOverlayLayer();
         tryStart();
       })
       .catch((err) => {
